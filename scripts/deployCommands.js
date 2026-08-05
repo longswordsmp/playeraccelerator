@@ -50,13 +50,37 @@ async function main() {
     if (global && !clear) {
       log.warn('Global commands can take up to an hour to appear. Set GUILD_ID for instant registration during development.');
     }
-    process.exit(0);
+    await shutdown(client, 0);
   } catch (err) {
     log.error(`Registration failed: ${err.message}`);
     if (err.code === 50001) log.error('The application lacks the applications.commands scope in that guild. Re-invite the bot with it.');
     if (err.status === 401) log.error('Discord rejected the token. Check BOT_TOKEN.');
-    process.exit(1);
+    await shutdown(client, 1);
   }
+}
+
+/**
+ * Close the client and let the process end on its own.
+ *
+ * Calling `process.exit()` here instead used to abort the run on Windows with
+ * `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)` from libuv. The
+ * commands registered fine first — the crash was purely in teardown, as the
+ * hard exit tore down handles that undici's HTTP pool was already in the middle
+ * of closing. Harmless in effect, alarming to read, and it made a successful
+ * deploy look like a failure.
+ *
+ * So: destroy the client, set an exit code, and let the event loop drain. Every
+ * timer this process owns is unref'd, so there is nothing left to hold it open.
+ * The fallback below is unref'd too — it therefore cannot keep the process
+ * alive, and only ever fires if something unexpected is still holding the loop.
+ *
+ * @param {import('../src/core/Client').StudioClient} client
+ * @param {number} code
+ */
+async function shutdown(client, code) {
+  process.exitCode = code;
+  await client.destroy().catch(() => null);
+  setTimeout(() => process.exit(code), 5000).unref();
 }
 
 main();

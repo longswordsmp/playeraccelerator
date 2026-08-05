@@ -26,14 +26,26 @@ const { BRAND } = require('./config/branding');
 
 const log = logger.child('boot');
 
-/** Print the startup banner. */
+/**
+ * Print the startup banner.
+ *
+ * The width is derived rather than written twice. Hard-coding the rule and the
+ * padding separately is how the right-hand edge ended up two characters adrift:
+ * the rule was 58 wide and the content padded to 54, plus a two-space indent.
+ * Long values are truncated so an over-long tagline cannot blow the box open
+ * either.
+ */
 function banner() {
+  const WIDTH = 58;
+  const rule = '─'.repeat(WIDTH);
+  const row = (text) => `  │ ${String(text).slice(0, WIDTH - 2).padEnd(WIDTH - 2)} │`;
+
   const lines = [
     '',
-    '  ╭──────────────────────────────────────────────────────────╮',
-    `  │  ${BRAND.name.padEnd(54)}│`,
-    `  │  ${BRAND.tagline.padEnd(54)}│`,
-    '  ╰──────────────────────────────────────────────────────────╯',
+    `  ╭${rule}╮`,
+    row(BRAND.name),
+    row(BRAND.tagline),
+    `  ╰${rule}╯`,
     '',
   ];
   process.stdout.write(`${lines.join('\n')}\n`);
