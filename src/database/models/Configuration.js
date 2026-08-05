@@ -13,18 +13,49 @@
 const { Schema, model } = require('mongoose');
 const { DEFAULT_CONFIG } = require('../../config/defaults');
 
-/** Deep clone that is safe for plain config trees. */
-const clone = (value) => JSON.parse(JSON.stringify(value));
+/**
+ * Is this a plain `{}` object, as opposed to a Date, ObjectId, Buffer or any
+ * other class instance? Only plain objects are safe to recurse into — anything
+ * else is a *value* and must be carried across whole.
+ */
+function isPlainObject(value) {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+/**
+ * Deep clone for configuration trees.
+ *
+ * Written by hand rather than with `JSON.parse(JSON.stringify(…))`, because
+ * that round-trip silently converts every `Date` into a string — and these
+ * trees hold real dates (`setup.completedAt`, `status.updatedAt`,
+ * `lockdown.startedAt`).
+ */
+function clone(value) {
+  if (value instanceof Date) return new Date(value.getTime());
+  if (Array.isArray(value)) return value.map(clone);
+  if (!isPlainObject(value)) return value;
+
+  const out = {};
+  for (const [key, entry] of Object.entries(value)) out[key] = clone(entry);
+  return out;
+}
 
 /**
  * Recursively merge `source` over `target` without mutating either.
- * Arrays are replaced wholesale — configuration lists are values, not sets.
+ *
+ * Arrays are replaced wholesale — a configuration list is a value, not a set to
+ * union. Dates and other non-plain objects are likewise carried across intact
+ * instead of being recursed into, which would flatten them to `{}`.
  */
 function deepMerge(target, source) {
-  if (Array.isArray(source)) return clone(source);
-  if (source === null || typeof source !== 'object') return source === undefined ? clone(target) : source;
+  if (source === undefined) return clone(target);
+  if (source === null) return null;
+  // Anything that is not a plain object is a leaf value.
+  if (!isPlainObject(source)) return clone(source);
 
-  const out = target && typeof target === 'object' && !Array.isArray(target) ? { ...target } : {};
+  const out = isPlainObject(target) ? { ...target } : {};
   for (const [key, value] of Object.entries(source)) {
     out[key] = key in out ? deepMerge(out[key], value) : clone(value);
   }
