@@ -618,3 +618,37 @@ test('office hours track the wall clock across a daylight-saving change', () => 
   assert.equal(at('2026-07-15T00:59:00Z').open, true);
   assert.equal(at('2026-07-15T01:00:00Z').open, false);
 });
+
+// ── Non-destructive repair ───────────────────────────────────────────────────
+
+test('setup repair contains no destructive call', () => {
+  // The whole point of `repair` is that it is safe to run on a live server with
+  // thousands of members in it. A `.delete()` slipping into this function later
+  // would be catastrophic and completely silent — the command would still look
+  // like it worked. Reading the compiled function body is crude, but it is the
+  // only way to assert this without a live Discord gateway, and it fails loudly
+  // if anyone adds one.
+  const setupService = require('../src/services/setupService');
+  const source = setupService.repair.toString();
+
+  for (const forbidden of ['.delete(', '.bulkDelete(', 'teardown(', '.setPositions(']) {
+    assert.ok(
+      !source.includes(forbidden),
+      `repair() must never call ${forbidden} — it runs against live servers`,
+    );
+  }
+
+  // And it must genuinely create things, or it is not doing its job.
+  assert.ok(source.includes('channels.create'), 'repair should create missing channels');
+  assert.ok(source.includes('roles.create'), 'repair should create missing roles');
+});
+
+test('/setup exposes repair as well as rebuild', () => {
+  const setup = require('../src/commands/admin/setup');
+  const names = setup.data.toJSON().options.map((option) => option.name);
+
+  assert.deepEqual(names, ['repair', 'rebuild']);
+  // Repair first: it is the one that is safe to run, and the one people
+  // actually need when the blueprint has gained a channel.
+  assert.equal(names[0], 'repair');
+});

@@ -253,7 +253,8 @@ Then assign your team the staff roles that were created.
 
 | Command | Access | Purpose |
 |---|---|---|
-| `/setup` | Server owner | Build the entire server from the blueprint |
+| `/setup rebuild` | Server owner | Build the entire server from the blueprint (destructive) |
+| `/setup repair` | Admin | Add anything the blueprint has gained, deleting nothing |
 | `/config` | Admin | 25 subcommands covering every runtime setting; `/config apply` does the lot in one |
 | `/panel` | Admin | Publish, refresh, relocate or republish any public panel |
 | `/members` | Admin | Bulk-grant or bulk-remove a role across everyone already in the server |
@@ -511,6 +512,50 @@ Principles the codebase actually follows:
 ---
 
 ## Deployment
+
+### Keeping it running
+
+The bot is a long-lived gateway client: while the process is down, the verify
+button, the ticket panel and every slash command are dead, and — because invite
+attribution works by diffing use counts on each join — anyone who joins during
+the outage is **never** credited to whoever invited them. The counts are
+re-baselined on the next start, so it is a permanent loss rather than a delayed
+one. Pick whichever of these matches how seriously the server is being run:
+
+| | Survives | Cost |
+| --- | --- | --- |
+| `npm start` in a terminal | nothing; dies with the window | free |
+| Windows service (NSSM) | reboot, logout — not shutdown | free |
+| VPS with Docker or PM2 | everything | ~$5/month |
+
+**As a Windows service.** [NSSM](https://nssm.cc/download) wraps any executable
+as a proper service, so it starts before login and restarts on crash:
+
+```powershell
+nssm install SamotWorks "C:\Program Files\nodejs\node.exe" "C:\path\to\src\index.js"
+nssm set SamotWorks AppDirectory "C:\path\to\samotworks"
+nssm set SamotWorks AppStdout "C:\path\to\samotworks\logs\service.log"
+nssm set SamotWorks AppStderr "C:\path\to\samotworks\logs\service.log"
+nssm set SamotWorks Start SERVICE_AUTO_START
+nssm start SamotWorks
+```
+
+MongoDB already installs as a service, so both come up together. The machine
+still has to be on.
+
+**Moving to a VPS.** `DATABASE_URL` points at `localhost`, so the database has
+to come too. Either let Docker Compose run MongoDB alongside the bot (below), or
+point `DATABASE_URL` at MongoDB Atlas. To carry existing data across:
+
+```bash
+mongodump --uri="mongodb://localhost:27017/player-accelerator" --out=dump
+# copy dump/ to the server, then
+mongorestore --uri="<new DATABASE_URL>" dump/player-accelerator
+```
+
+Worth doing rather than starting fresh: the database holds the channel and role
+ids `/setup` created, every ticket, order and review, and the referral counts.
+Losing it means the bot no longer knows which channel is which.
 
 ### Docker (recommended)
 

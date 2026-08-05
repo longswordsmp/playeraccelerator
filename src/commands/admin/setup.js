@@ -29,18 +29,24 @@ module.exports = {
 
   data: new SlashCommandBuilder()
     .setName('setup')
-    .setDescription('Build the complete studio server: categories, channels, roles, permissions and panels.')
+    .setDescription('Build or repair the studio server structure.')
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .setDMPermission(false)
-    .addBooleanOption((option) => option
-      .setName('wipe')
-      .setDescription('Delete existing channels and roles first (default: true).'))
-    .addBooleanOption((option) => option
-      .setName('delete-roles')
-      .setDescription('Also delete unused custom roles (default: true).'))
-    .addBooleanOption((option) => option
-      .setName('backup')
-      .setDescription('Take a structure backup before making changes (default: true, strongly recommended).')),
+    .addSubcommand((sub) => sub
+      .setName('repair')
+      .setDescription('Add anything missing without deleting a thing. Safe on a live server.'))
+    .addSubcommand((sub) => sub
+      .setName('rebuild')
+      .setDescription('DESTRUCTIVE. Delete the existing structure and build it fresh from the blueprint.')
+      .addBooleanOption((option) => option
+        .setName('wipe')
+        .setDescription('Delete existing channels and roles first (default: true).'))
+      .addBooleanOption((option) => option
+        .setName('delete-roles')
+        .setDescription('Also delete unused custom roles (default: true).'))
+      .addBooleanOption((option) => option
+        .setName('backup')
+        .setDescription('Take a structure backup first (default: true, strongly recommended).'))),
 
   /**
    * @param {import('discord.js').ChatInputCommandInteraction} interaction
@@ -48,7 +54,74 @@ module.exports = {
    */
   async execute(interaction, { config }) {
     const guild = interaction.guild;
+    const sub = interaction.options.getSubcommand();
 
+    // ── Repair ──────────────────────────────────────────────────────────────
+    // Non-destructive, so it does not need the owner-only gate or the
+    // confirmation dialog that guards a rebuild.
+    if (sub === 'repair') {
+      const blockers = setupService.preflight(guild);
+      if (blockers.length) {
+        return safeReply(interaction, {
+          embeds: [embeds.error({
+            config,
+            title: 'Repair cannot start',
+            description: blockers.map((problem) => `${EMOJIS.bullet} ${problem}`).join('\n\n'),
+          })],
+        }, { ephemeral: true });
+      }
+
+      await safeReply(interaction, {
+        embeds: [embeds.info({
+          config,
+          title: `${EMOJIS.loading} Checking the server…`,
+          description: 'Looking for anything the blueprint has that this server does not.',
+        })],
+      }, { ephemeral: true });
+
+      const progress = new setupService.SetupProgress(interaction, config);
+      const result = await setupService.repair(guild, config, progress);
+      const updated = await configService.get(guild, { fresh: true });
+
+      // Publish panels only into channels that were just created. An existing
+      // channel already has its panel, and publishing again would duplicate it.
+      let published = 0;
+      if (result.panelTargets.length) {
+        await progress.step('Publishing panels for the new channels…', 'pending');
+        const panelService = require('../../services/panelService');
+        published = await panelService.publishAll(
+          guild, updated, result.panelTargets, (message) => progress.warn(message),
+        );
+      }
+
+      const list = (entries) => (entries.length
+        ? entries.slice(0, 20).join(', ') + (entries.length > 20 ? `, and ${entries.length - 20} more` : '')
+        : '_none_');
+
+      return interaction.editReply({
+        embeds: [embeds.success({
+          config: updated,
+          title: result.created.length || result.adopted.length ? 'Server Repaired' : 'Nothing missing',
+          description: result.created.length || result.adopted.length
+            ? `Added **${result.created.length}** and adopted **${result.adopted.length}** existing item`
+              + `${result.adopted.length === 1 ? '' : 's'}. `
+              + `**${result.existing}** were already correct, and nothing was deleted.`
+            : `All **${result.existing}** blueprint roles and channels are already present and wired up.`,
+          fields: [
+            ...(result.created.length ? [{ name: 'Created', value: truncate(list(result.created), 1024) }] : []),
+            ...(result.adopted.length ? [{ name: 'Adopted (already existed, now wired up)', value: truncate(list(result.adopted), 1024) }] : []),
+            ...(published ? [{ name: 'Panels', value: `${published} published into the new channels.` }] : []),
+            ...(progress.warnings.length
+              ? [{ name: 'Warnings', value: truncate([...new Set(progress.warnings)].slice(0, 8).map((w) => `${EMOJIS.bullet} ${w}`).join('\n'), 1024) }]
+              : []),
+          ],
+          footer: 'Nothing was deleted. Existing channels, roles and messages are untouched.',
+        })],
+        components: [],
+      }).catch(() => null);
+    }
+
+    // ── Rebuild ─────────────────────────────────────────────────────────────
     // Only the guild owner or a configured bot owner may rebuild a server.
     const permissions = require('../../utils/permissions');
     if (guild.ownerId !== interaction.user.id && !permissions.isBotOwner(interaction.user.id)) {
@@ -57,8 +130,9 @@ module.exports = {
           config,
           title: 'Server owner only',
           description:
-            'Because `/setup` deletes channels and roles, only the **server owner** can run it. ' +
-            'Ask them to run the command, or use `/panel` to publish individual panels instead.',
+            'Because `/setup rebuild` deletes channels and roles, only the **server owner** can run it. ' +
+            'If you are only trying to add something that is missing, use `/setup repair` instead — ' +
+            'it deletes nothing and anyone with admin can run it.',
         })],
       }, { ephemeral: true });
     }

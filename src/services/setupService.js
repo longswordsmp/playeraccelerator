@@ -423,6 +423,229 @@ async function createChannels(guild, roles, progress) {
   return { categories, channels, logChannels, panelTargets };
 }
 
+// ── Repair ───────────────────────────────────────────────────────────────────
+
+/**
+ * Add whatever the blueprint has gained since this server was built, without
+ * deleting or moving anything that already exists.
+ *
+ * This is the missing half of `/setup`. The blueprint grows — verification and
+ * the free-service programme arrived after most servers were already running —
+ * and until now the only way to pick up a new channel was a full destructive
+ * rebuild. On a server with thousands of members that is not a real option, so
+ * in practice the new features were simply unreachable.
+ *
+ * `createChannels` cannot be reused for this: it creates unconditionally, so
+ * running it against a live server would produce a second copy of every
+ * category and channel. Everything here is keyed on "does the configured id
+ * still resolve, and if not is there something with the right name to adopt".
+ *
+ * @param {import('discord.js').Guild} guild
+ * @param {object} config
+ * @param {SetupProgress} progress
+ * @returns {Promise<{ created: string[], adopted: string[], existing: number, panelTargets: Array<{panel: string, channelId: string}> }>}
+ */
+async function repair(guild, config, progress) {
+  const created = [];
+  const adopted = [];
+  let existing = 0;
+
+  const roles = { ...(config.roles ?? {}) };
+  const categories = { ...(config.categories ?? {}) };
+  const channels = { ...(config.channels ?? {}) };
+  const logChannels = { ...(config.logChannels ?? {}) };
+  const panelTargets = [];
+
+  // ── Roles ─────────────────────────────────────────────────────────────────
+  await progress.step('Checking roles…', 'pending');
+
+  for (const definition of ROLES) {
+    if (roles[definition.key] && guild.roles.cache.has(roles[definition.key])) {
+      existing += 1;
+      continue;
+    }
+
+    // Adopt a role of the right name before making a duplicate of it.
+    const match = guild.roles.cache.find((role) => role.name === definition.name && !role.managed);
+    if (match) {
+      roles[definition.key] = match.id;
+      adopted.push(`role \`${definition.name}\``);
+      continue;
+    }
+
+    // eslint-disable-next-line no-await-in-loop -- deliberate pacing
+    const role = await attempt(() => guild.roles.create({
+      name: definition.name,
+      color: definition.color,
+      hoist: definition.hoist,
+      mentionable: definition.mentionable,
+      permissions: new PermissionsBitField(definition.permissions.map((p) => PermissionFlagsBits[p]).filter(Boolean)),
+      reason: 'Repairing server structure via /setup repair',
+    }), { label: 'create role' });
+
+    if (role) {
+      roles[definition.key] = role.id;
+      created.push(`role \`${definition.name}\``);
+    } else {
+      progress.warn(`Could not create the \`${definition.name}\` role.`);
+    }
+    // eslint-disable-next-line no-await-in-loop
+    await sleep(API_DELAY_MS);
+  }
+
+  await progress.step(`Roles checked — ${created.filter((entry) => entry.startsWith('role')).length} added`);
+
+  // ── Categories and channels ───────────────────────────────────────────────
+  for (const category of CATEGORIES) {
+    // eslint-disable-next-line no-await-in-loop
+    await progress.step(`Checking ${category.name.replace(/[═\s]/g, ' ').trim()}…`, 'pending');
+
+    let parentId = categories[category.key];
+    let parent = parentId ? guild.channels.cache.get(parentId) : null;
+
+    if (!parent) {
+      parent = guild.channels.cache.find(
+        (channel) => channel.type === ChannelType.GuildCategory && channel.name === category.name,
+      );
+      if (parent) {
+        adopted.push(`category \`${category.name}\``);
+      } else {
+        // eslint-disable-next-line no-await-in-loop
+        parent = await attempt(() => guild.channels.create({
+          name: category.name,
+          type: ChannelType.GuildCategory,
+          permissionOverwrites: overwritesFor(guild, roles, category.access),
+          reason: 'Repairing server structure via /setup repair',
+        }), { label: 'create category' });
+        if (parent) created.push(`category \`${category.name}\``);
+        // eslint-disable-next-line no-await-in-loop
+        await sleep(API_DELAY_MS);
+      }
+
+      if (!parent) {
+        progress.warn(`Could not create the category \`${category.name}\`.`);
+        continue;
+      }
+      parentId = parent.id;
+      categories[category.key] = parentId;
+    } else {
+      existing += 1;
+    }
+
+    for (const definition of category.channels) {
+      const configured = channels[definition.key];
+      const live = configured ? guild.channels.cache.get(configured) : null;
+
+      if (live) {
+        existing += 1;
+        if (definition.logKey) logChannels[definition.logKey] = live.id;
+        continue;
+      }
+
+      // Adopt by name within this category, so a channel someone recreated by
+      // hand is picked up instead of duplicated.
+      let channel = guild.channels.cache.find(
+        (entry) => entry.name === definition.name && entry.parentId === parentId,
+      );
+
+      if (channel) {
+        adopted.push(`\`${definition.name}\``);
+      } else {
+        // eslint-disable-next-line no-await-in-loop
+        channel = await attempt(() => guild.channels.create({
+          name: definition.name,
+          type: ChannelType.GuildText,
+          parent: parentId,
+          topic: definition.topic,
+          permissionOverwrites: overwritesFor(guild, roles, definition.access ?? category.access),
+          reason: 'Repairing server structure via /setup repair',
+        }), { label: 'create channel' });
+        if (channel) created.push(`\`${definition.name}\``);
+        // eslint-disable-next-line no-await-in-loop
+        await sleep(API_DELAY_MS);
+      }
+
+      if (!channel) {
+        progress.warn(`Could not create \`${definition.name}\`.`);
+        continue;
+      }
+
+      channels[definition.key] = channel.id;
+      if (definition.logKey) logChannels[definition.logKey] = channel.id;
+      // Only newly wired channels need a panel — an existing one already has
+      // its own, and republishing it here would leave a duplicate behind.
+      if (definition.panel) panelTargets.push({ panel: definition.panel, channelId: channel.id });
+    }
+  }
+
+  // ── Voice ─────────────────────────────────────────────────────────────────
+  await progress.step('Checking voice channels…', 'pending');
+
+  for (const definition of VOICE_CHANNELS) {
+    if (channels[definition.key] && guild.channels.cache.has(channels[definition.key])) {
+      existing += 1;
+      continue;
+    }
+
+    const match = guild.channels.cache.find(
+      (channel) => channel.type === ChannelType.GuildVoice && channel.name === definition.name,
+    );
+    if (match) {
+      channels[definition.key] = match.id;
+      adopted.push(`voice \`${definition.name}\``);
+      continue;
+    }
+
+    // eslint-disable-next-line no-await-in-loop
+    const channel = await attempt(() => guild.channels.create({
+      name: definition.name,
+      type: ChannelType.GuildVoice,
+      parent: categories[definition.category],
+      permissionOverwrites: overwritesFor(guild, roles, definition.access),
+      reason: 'Repairing server structure via /setup repair',
+    }), { label: 'create voice channel' });
+
+    if (channel) {
+      channels[definition.key] = channel.id;
+      created.push(`voice \`${definition.name}\``);
+    }
+    // eslint-disable-next-line no-await-in-loop
+    await sleep(API_DELAY_MS);
+  }
+
+  // ── Persist ───────────────────────────────────────────────────────────────
+  await progress.step('Saving configuration…', 'pending');
+
+  await configService.update(guild, (cfg) => {
+    cfg.setPath('roles', roles);
+    cfg.setPath('categories', categories);
+    cfg.setPath('channels', channels);
+    cfg.setPath('logChannels', logChannels);
+    // The verification gate needs a role to grant, and this may be the run that
+    // first created one.
+    if (roles.verified) {
+      cfg.setPath('verify.roleId', roles.verified);
+      // Joining still must not grant it — the button does. Setting `onJoin`
+      // here would defeat the gate entirely.
+      cfg.setPath('autoRoles.onJoin', []);
+    }
+    if (roles.bot) cfg.setPath('autoRoles.onBotJoin', [roles.bot]);
+    if (roles.customer) cfg.setPath('autoRoles.onFirstPurchase', roles.customer);
+    if (roles.vip) cfg.setPath('autoRoles.onVip', roles.vip);
+    // A repaired server is a set-up server, even if /setup itself never ran.
+    cfg.setPath('setup.completed', true);
+  });
+  configService.invalidate(guild.id);
+
+  await progress.step('Configuration saved');
+
+  log.info('Structure repaired', {
+    guildId: guild.id, created: created.length, adopted: adopted.length, existing,
+  });
+
+  return { created, adopted, existing, panelTargets };
+}
+
 // ── Orchestration ────────────────────────────────────────────────────────────
 
 /**
@@ -578,4 +801,4 @@ async function run({ interaction, guild, config, options }) {
   return summary;
 }
 
-module.exports = { run, preflight, teardown, applyIdentity, createRoles, createChannels, overwritesFor, SetupProgress };
+module.exports = { run, repair, preflight, teardown, applyIdentity, createRoles, createChannels, overwritesFor, SetupProgress };
