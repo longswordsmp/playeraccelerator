@@ -8,14 +8,14 @@
  * request and the portfolio offer.
  */
 
-const { Order, Ticket, User, Counter, StaffStats, GuildStats } = require('../database/models');
+const { Order, User, Counter, StaffStats, GuildStats } = require('../database/models');
 const configService = require('./configService');
 const logService = require('./logService');
 const statisticsService = require('./statisticsService');
 const embeds = require('../utils/embeds');
 const errors = require('../utils/errors');
 const { ORDER_STATUSES, TICKET_TYPE_MAP, PRIORITIES } = require('../config/server');
-const { EMOJIS, COLORS } = require('../config/branding');
+const { EMOJIS } = require('../config/branding');
 const { safeSend, resolveTextChannel, fetchMember, attempt } = require('../utils/discord');
 const { timestamp, money, padId, safeField, truncate, duration } = require('../utils/formatters');
 const { logger } = require('../utils/logger');

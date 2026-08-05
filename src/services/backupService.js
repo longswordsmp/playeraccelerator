@@ -201,7 +201,6 @@ async function restore(guild, code, { actor, wipe = false, onProgress = () => {}
   // Always snapshot the current state before overwriting it.
   await create(guild, { trigger: 'pre-restore', createdBy: actor?.id, createdByName: actor?.user?.tag, label: `Pre-restore of ${code}` });
 
-  const me = guild.members.me;
   /** Old id -> new id, so overwrites can be re-pointed. */
   const roleMap = new Map([[payload.guild.id, guild.roles.everyone.id]]);
   const created = { roles: 0, categories: 0, channels: 0, skipped: 0 };

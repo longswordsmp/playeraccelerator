@@ -13,7 +13,7 @@ const logService = require('./logService');
 const embeds = require('../utils/embeds');
 const errors = require('../utils/errors');
 const { EMOJIS, COLORS } = require('../config/branding');
-const { timestamp, duration } = require('../utils/formatters');
+const { duration } = require('../utils/formatters');
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 

@@ -67,27 +67,31 @@ function load(client) {
     try {
       // Clear the require cache so a hot reload picks up edits.
       delete require.cache[require.resolve(file)];
-      const command = require(file);
-
-      if (!command?.data?.name || typeof command.execute !== 'function') {
-        failed.push({ file: path.relative(dir, file), error: 'missing `data` or `execute`' });
-        continue;
-      }
-
+      const exported = require(file);
+      // A module may export one command or an array of related commands.
+      const commands = Array.isArray(exported) ? exported : [exported];
       const category = path.basename(path.dirname(file));
-      const definition = {
-        category,
-        access: command.access ?? 'everyone',
-        cooldown: command.cooldown ?? null,
-        guildOnly: command.guildOnly !== false,
-        requiresSetup: command.requiresSetup === true,
-        botPermissions: command.botPermissions ?? [],
-        ...command,
-      };
 
-      if (command.data.type && command.data.type !== 1) client.contextMenus.set(command.data.name, definition);
-      else client.commands.set(command.data.name, definition);
-      loaded += 1;
+      for (const command of commands) {
+        if (!command?.data?.name || typeof command.execute !== 'function') {
+          failed.push({ file: path.relative(dir, file), error: 'missing `data` or `execute`' });
+          continue;
+        }
+
+        const definition = {
+          category,
+          access: command.access ?? 'everyone',
+          cooldown: command.cooldown ?? null,
+          guildOnly: command.guildOnly !== false,
+          requiresSetup: command.requiresSetup === true,
+          botPermissions: command.botPermissions ?? [],
+          ...command,
+        };
+
+        if (command.data.type && command.data.type !== 1) client.contextMenus.set(command.data.name, definition);
+        else client.commands.set(command.data.name, definition);
+        loaded += 1;
+      }
     } catch (err) {
       failed.push({ file: path.relative(dir, file), error: err.message });
       log.error(`Failed to load command ${path.relative(dir, file)}`, { message: err.message });

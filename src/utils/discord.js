@@ -51,7 +51,7 @@ async function safeReply(interaction, payload, { ephemeral = false, followUp = f
   try {
     if (interaction.deferred && !interaction.replied && !followUp) {
       // editReply cannot change ephemerality — the flag was set at defer time.
-      const { flags, ...rest } = body;
+      const { flags: _flags, ...rest } = body;
       return await interaction.editReply(rest);
     }
     if (interaction.replied || interaction.deferred) {

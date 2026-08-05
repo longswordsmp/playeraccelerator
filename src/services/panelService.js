@@ -22,7 +22,7 @@ const customId = require('../utils/customId');
 const { Review, Portfolio } = require('../database/models');
 const { EMOJIS, COLORS, stars } = require('../config/branding');
 const { safeSend, resolveTextChannel, attempt } = require('../utils/discord');
-const { money, number, percent, duration, timestamp, padId, truncate, table, medal } = require('../utils/formatters');
+const { money, number, duration, truncate, table, medal } = require('../utils/formatters');
 const { logger } = require('../utils/logger');
 
 const log = logger.child('panels');
@@ -183,7 +183,6 @@ const hoursPanel = async (guild, config) => ({ embeds: [businessService.hoursEmb
 /** Public statistics dashboard. */
 async function statisticsPanel(guild, config) {
   const stats = await statisticsService.overview(guild.id);
-  const symbol = config.business?.currencySymbol ?? '$';
 
   return {
     embeds: [embeds.panel({

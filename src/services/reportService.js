@@ -14,8 +14,7 @@ const orderService = require('./orderService');
 const embeds = require('../utils/embeds');
 const { EMOJIS, COLORS, stars } = require('../config/branding');
 const { safeSend } = require('../utils/discord');
-const { number, money, duration, percent, medal, table, keyValueBlock } = require('../utils/formatters');
-const { Review } = require('../database/models');
+const { number, money, duration, medal, table, keyValueBlock } = require('../utils/formatters');
 const { logger } = require('../utils/logger');
 
 const log = logger.child('reports');

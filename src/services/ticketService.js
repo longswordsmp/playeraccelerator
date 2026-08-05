@@ -18,7 +18,6 @@ const transcriptService = require('./transcriptService');
 const statisticsService = require('./statisticsService');
 const embeds = require('../utils/embeds');
 const components = require('../utils/components');
-const customId = require('../utils/customId');
 const permissions = require('../utils/permissions');
 const errors = require('../utils/errors');
 const { TICKET_TYPE_MAP, PRIORITIES, STATUSES } = require('../config/server');

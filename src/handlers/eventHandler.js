@@ -31,6 +31,30 @@ function walk(dir) {
 }
 
 /**
+ * Attach one listener, wrapped so a throw inside it can never escape.
+ * @param {import('../core/Client').StudioClient} client
+ * @param {{ name: string, once?: boolean, execute: Function }} event
+ */
+function bind(client, event) {
+  const listener = async (...args) => {
+    try {
+      client.metrics.eventsHandled += 1;
+      await event.execute(client, ...args);
+    } catch (err) {
+      client.metrics.errors += 1;
+      // Best-effort guild resolution so the error lands in the right log channel.
+      const guild = args.find((arg) => arg?.guild)?.guild
+        ?? args.find((arg) => arg?.members && arg?.channels)
+        ?? null;
+      await logService.error(guild, err, { context: `event:${event.name}` });
+    }
+  };
+
+  if (event.once) client.once(event.name, listener);
+  else client.on(event.name, listener);
+}
+
+/**
  * Attach every event listener to the client.
  * @param {import('../core/Client').StudioClient} client
  */
@@ -42,28 +66,18 @@ function load(client) {
   for (const file of files) {
     try {
       delete require.cache[require.resolve(file)];
-      const event = require(file);
-      if (!event?.name || typeof event.execute !== 'function') {
-        log.error(`Event ${path.relative(dir, file)} is missing \`name\` or \`execute\``);
-        continue;
-      }
+      const exported = require(file);
+      // A module may export a single event or an array of related listeners.
+      const events = Array.isArray(exported) ? exported : [exported];
 
-      /** Wrapper that isolates handler failures. */
-      const listener = async (...args) => {
-        try {
-          client.metrics.eventsHandled += 1;
-          await event.execute(client, ...args);
-        } catch (err) {
-          client.metrics.errors += 1;
-          // Best-effort guild resolution so the error lands in the right log channel.
-          const guild = args.find((arg) => arg?.guild)?.guild ?? args.find((arg) => arg?.members && arg?.channels) ?? null;
-          await logService.error(guild, err, { context: `event:${event.name}` });
+      for (const event of events) {
+        if (!event?.name || typeof event.execute !== 'function') {
+          log.error(`Event ${path.relative(dir, file)} is missing \`name\` or \`execute\``);
+          continue;
         }
-      };
-
-      if (event.once) client.once(event.name, listener);
-      else client.on(event.name, listener);
-      loaded += 1;
+        bind(client, event);
+        loaded += 1;
+      }
     } catch (err) {
       log.error(`Failed to load event ${path.relative(dir, file)}`, { message: err.message });
     }
@@ -73,4 +87,4 @@ function load(client) {
   return loaded;
 }
 
-module.exports = { load, walk };
+module.exports = { load, walk, bind };

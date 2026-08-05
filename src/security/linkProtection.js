@@ -10,7 +10,6 @@
  */
 
 const filters = require('./filters');
-const moderationService = require('../services/moderationService');
 const logService = require('../services/logService');
 const { env } = require('../config/env');
 const { extractUrls } = require('../utils/validators');

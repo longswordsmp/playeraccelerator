@@ -53,13 +53,23 @@ function load(client) {
       const full = path.join(dir, file);
       try {
         delete require.cache[require.resolve(full)];
-        const handler = require(full);
-        if (!handler?.namespace || typeof handler.actions !== 'object') {
-          log.error(`Component ${family}/${file} is missing \`namespace\` or \`actions\``);
-          continue;
+        const exported = require(full);
+        // A module may export a single handler or several related ones.
+        const handlers = Array.isArray(exported) ? exported : [exported];
+
+        for (const handler of handlers) {
+          if (!handler?.namespace || typeof handler.actions !== 'object') {
+            log.error(`Component ${family}/${file} is missing \`namespace\` or \`actions\``);
+            continue;
+          }
+          // Merge rather than overwrite: `ticket` buttons and `ticket` selects
+          // live in different files but the same namespace is legitimate within
+          // a family, and two files may both extend it.
+          const existing = client[family].get(handler.namespace);
+          if (existing) Object.assign(existing.actions, handler.actions);
+          else client[family].set(handler.namespace, handler);
+          loaded += 1;
         }
-        client[family].set(handler.namespace, handler);
-        loaded += 1;
       } catch (err) {
         log.error(`Failed to load component ${family}/${file}`, { message: err.message });
       }
