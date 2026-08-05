@@ -294,6 +294,14 @@ const DEFAULT_CONFIG = {
     enabled: true,
     /** Post the welcome embed in the welcome channel. */
     channelMessage: true,
+    /**
+     * Seconds before a greeting is removed again. 0 keeps it forever.
+     *
+     * The welcome channel's real content is the pinned panel; a run of joins
+     * buries it, and the next arrival reads greetings addressed to strangers
+     * instead of the orientation the channel exists to provide.
+     */
+    deleteAfterSeconds: 60,
     /** Send the welcome embed as a direct message too. */
     directMessage: false,
     /** Nudge new members in the ticket channel, then clean it up. */

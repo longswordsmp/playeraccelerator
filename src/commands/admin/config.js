@@ -211,7 +211,8 @@ module.exports = {
       .addBooleanOption((option) => option.setName('channel-message').setDescription('Post the welcome embed in the welcome channel.'))
       .addBooleanOption((option) => option.setName('direct-message').setDescription('Also send it by DM.'))
       .addBooleanOption((option) => option.setName('ticket-nudge').setDescription('Nudge new members in the ticket channel.'))
-      .addIntegerOption((option) => option.setName('nudge-seconds').setDescription('How long the nudge survives.').setMinValue(5).setMaxValue(300)))
+      .addIntegerOption((option) => option.setName('nudge-seconds').setDescription('How long the nudge survives.').setMinValue(5).setMaxValue(300))
+      .addIntegerOption((option) => option.setName('delete-after').setDescription('Seconds before a greeting is removed. 0 keeps it forever.').setMinValue(0).setMaxValue(86400)))
 
     .addSubcommand((sub) => sub
       .setName('verify')
@@ -767,6 +768,7 @@ module.exports = {
           'direct-message': bool('welcome.directMessage'),
           'ticket-nudge': bool('welcome.ticketNudge'),
           'nudge-seconds': int('welcome.ticketNudgeSeconds'),
+          'delete-after': int('welcome.deleteAfterSeconds'),
         }), { title: 'Welcome Settings Updated' });
 
       case 'verify': {

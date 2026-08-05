@@ -123,7 +123,15 @@ module.exports = {
 
     if (config.welcome?.channelMessage !== false) {
       const welcomeChannel = configService.channel(member.guild, config, 'welcome');
-      await safeSend(welcomeChannel, { content: `${member}`, embeds: [welcomeEmbed] });
+      const greeting = await safeSend(welcomeChannel, { content: `${member}`, embeds: [welcomeEmbed] });
+
+      // Greetings are transient by default. The welcome channel's real content
+      // is the pinned panel that tells people where to go; a run of joins
+      // pushes it off the screen, so the next arrival sees a wall of greetings
+      // for strangers and none of the orientation the channel exists to give.
+      // Set `welcome.deleteAfterSeconds` to 0 to keep them permanently.
+      const ttl = config.welcome?.deleteAfterSeconds ?? 60;
+      if (ttl > 0) deleteAfter(greeting, ttl * 1000);
     }
 
     if (config.welcome?.directMessage) {

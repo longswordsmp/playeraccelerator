@@ -714,3 +714,92 @@ test('connection failures name the actual mistake', () => {
   assert.equal(diagnose(new Error('connect ECONNREFUSED 10.0.0.5:27017'), 'mongodb://host:27017/db'), null);
   assert.equal(diagnose(new Error('some unrelated failure'), 'mongodb://host/db'), null);
 });
+
+// ── Welcome greeting cleanup ─────────────────────────────────────────────────
+
+test('the welcome sweep spares the panel, pins and anything recent', async () => {
+  const { Collection } = require('discord.js');
+  const scheduler = require('../src/services/schedulerService');
+
+  const job = scheduler.JOBS.find((entry) => entry.name === 'sweep-welcome-greetings');
+  assert.ok(job, 'the sweep job must be registered');
+
+  const deleted = [];
+  const message = (id, ageSeconds, options = {}) => ({
+    id,
+    author: { id: 'bot' },
+    createdTimestamp: Date.now() - ageSeconds * 1000,
+    pinned: false,
+    deletable: true,
+    async delete() { deleted.push(id); return this; },
+    ...options,
+  });
+
+  const messages = [
+    message('panel', 9999),                       // the panel itself
+    message('pinned', 9999, { pinned: true }),    // deliberately kept
+    message('old-greeting', 300),                 // past the TTL
+    message('fresh-greeting', 5),                 // still within it
+    message('someone-else', 9999, { author: { id: 'human' } }),
+  ];
+
+  const guild = {
+    id: 'g1',
+    client: { user: { id: 'bot' } },
+    channels: {
+      cache: new Collection([['welcome-channel', {
+        id: 'welcome-channel',
+        isTextBased: () => true,
+        messages: { fetch: async () => new Collection(messages.map((m) => [m.id, m])) },
+      }]]),
+    },
+  };
+
+  const config = {
+    setup: { completed: true },
+    welcome: { channelMessage: true, deleteAfterSeconds: 60 },
+    channels: { welcome: 'welcome-channel' },
+    panels: { welcome: { messageId: 'panel' } },
+  };
+
+  await job.run(guild, config);
+  assert.deepEqual(deleted, ['old-greeting']);
+});
+
+test('the welcome sweep refuses to run when it cannot identify the panel', async () => {
+  const { Collection } = require('discord.js');
+  const scheduler = require('../src/services/schedulerService');
+  const job = scheduler.JOBS.find((entry) => entry.name === 'sweep-welcome-greetings');
+
+  let fetched = false;
+  const guild = {
+    id: 'g1',
+    client: { user: { id: 'bot' } },
+    channels: {
+      cache: new Collection([['welcome-channel', {
+        id: 'welcome-channel',
+        isTextBased: () => true,
+        messages: { fetch: async () => { fetched = true; return new Collection(); } },
+      }]]),
+    },
+  };
+
+  // No stored panel id: the panel and a greeting are indistinguishable, so
+  // sweeping would eventually delete the panel. It must not even look.
+  await job.run(guild, {
+    setup: { completed: true },
+    welcome: { deleteAfterSeconds: 60 },
+    channels: { welcome: 'welcome-channel' },
+    panels: {},
+  });
+  assert.equal(fetched, false);
+
+  // Likewise when greetings are configured to be permanent.
+  await job.run(guild, {
+    setup: { completed: true },
+    welcome: { deleteAfterSeconds: 0 },
+    channels: { welcome: 'welcome-channel' },
+    panels: { welcome: { messageId: 'panel' } },
+  });
+  assert.equal(fetched, false);
+});

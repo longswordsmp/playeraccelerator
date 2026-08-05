@@ -119,6 +119,54 @@ const JOBS = [
     run: async (guild) => reportService.postWeekly(guild),
   },
   {
+    name: 'sweep-welcome-greetings',
+    every: 5,
+    perGuild: true,
+    /**
+     * Remove greetings whose delete timer did not survive a restart.
+     *
+     * The timer set when the greeting is posted covers the normal case, but it
+     * lives in process memory — a redeploy or crash between posting and firing
+     * strands that message permanently, which is exactly the pile-up the timer
+     * exists to prevent.
+     */
+    run: async (guild, config) => {
+      const ttl = config.welcome?.deleteAfterSeconds ?? 60;
+      if (!config.setup?.completed || config.welcome?.channelMessage === false || ttl <= 0) return;
+
+      const channelId = config.channels?.welcome;
+      const channel = channelId ? guild.channels.cache.get(channelId) : null;
+      if (!channel?.isTextBased()) return;
+
+      // Without the panel's message id there is no way to tell the panel from a
+      // greeting — both are bot-authored embeds in the same channel — and a
+      // sweep would take the panel with them. Refuse rather than guess.
+      const panelId = config.panels?.welcome?.messageId;
+      if (!panelId) return;
+
+      const messages = await channel.messages.fetch({ limit: 50 }).catch(() => null);
+      if (!messages) return;
+
+      const cutoff = Date.now() - ttl * 1000;
+
+      const stale = [...messages.values()].filter((message) => (
+        message.author?.id === guild.client.user.id
+        && message.createdTimestamp < cutoff
+        && message.id !== panelId
+        // Pinned messages are deliberate; never sweep one away.
+        && !message.pinned
+        && message.deletable
+      ));
+
+      for (const message of stale) {
+        // eslint-disable-next-line no-await-in-loop -- sequential to respect rate limits
+        await message.delete().catch(() => null);
+      }
+
+      if (stale.length) log.debug(`Swept ${stale.length} stale greeting(s)`, { guildId: guild.id });
+    },
+  },
+  {
     name: 'close-expired-launch',
     every: 10,
     perGuild: true,
