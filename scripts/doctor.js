@@ -145,7 +145,14 @@ async function main() {
         warn('GUILD_ID is not set', 'Commands will be registered globally, which can take up to an hour to propagate.');
       }
     } catch (err) {
-      fail('Discord rejected the token', err.message);
+      // Discord's REST errors often carry an empty message, so translate the
+      // status code into something an operator can act on.
+      const explanation = {
+        401: 'The token is invalid or has been reset. Copy a fresh one from Bot → Reset Token.',
+        403: 'The token is valid but the application lacks access. Check the bot has not been disabled.',
+        429: 'Discord is rate limiting this token. Wait a minute and try again.',
+      }[err.status] ?? err.message ?? 'Unknown error';
+      fail('Discord rejected the request', `${err.status ? `HTTP ${err.status} — ` : ''}${explanation}`);
     }
   }
 
