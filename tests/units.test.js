@@ -549,3 +549,72 @@ test('purging a panel channel removes only the bot\'s own messages, and counts t
   const foreign = channel([message('7', 1, 'someone-else')]);
   assert.equal(await panelService.purgeOwnMessages(foreign, 'bot'), 0);
 });
+
+// ── Automatic developer status ───────────────────────────────────────────────
+
+/** Hours that are always open, or always shut, so the mode logic is deterministic. */
+const ALWAYS_OPEN = Object.fromEntries([0, 1, 2, 3, 4, 5, 6].map((d) => [d, { open: '00:00', close: '23:59' }]));
+const ALWAYS_SHUT = Object.fromEntries([0, 1, 2, 3, 4, 5, 6].map((d) => [d, null]));
+
+const statusConfig = (hours, status) => ({ business: { timezone: 'UTC', hours }, status });
+
+test('an automatic status follows the office hours in both directions', () => {
+  // The bug this pins: the stored default is `offline`, and the old rule only
+  // ever downgraded a status. A guild that had never touched /status therefore
+  // advertised "offline" at midday, every day, forever.
+  assert.equal(businessService.effectiveStatus(statusConfig(ALWAYS_OPEN, { current: 'offline', auto: true })), 'online');
+  assert.equal(businessService.effectiveStatus(statusConfig(ALWAYS_SHUT, { current: 'offline', auto: true })), 'away');
+  assert.equal(businessService.effectiveStatus(statusConfig(ALWAYS_OPEN, { current: 'busy', auto: true })), 'online');
+
+  // `auto` defaults to on when the key is absent, so an existing document that
+  // predates the option still behaves sensibly.
+  assert.equal(businessService.effectiveStatus(statusConfig(ALWAYS_OPEN, { current: 'offline' })), 'online');
+});
+
+test('a pinned status is respected, except for promising availability after hours', () => {
+  const pinned = (current, hours) => businessService.effectiveStatus(statusConfig(hours, { current, auto: false }));
+
+  assert.equal(pinned('busy', ALWAYS_OPEN), 'busy');
+  assert.equal(pinned('busy', ALWAYS_SHUT), 'busy', 'busy is honest at any hour');
+  assert.equal(pinned('streaming', ALWAYS_SHUT), 'streaming');
+  assert.equal(pinned('online', ALWAYS_OPEN), 'online');
+  // Advertising "online" when the studio is shut is a promise nobody is there
+  // to keep.
+  assert.equal(pinned('online', ALWAYS_SHUT), 'away');
+  assert.equal(pinned('coding', ALWAYS_SHUT), 'away');
+});
+
+test('turning off hour-tracking hands the status back entirely', () => {
+  const config = statusConfig(ALWAYS_SHUT, { current: 'online', auto: true, autoFromHours: false });
+  assert.equal(businessService.effectiveStatus(config), 'online');
+  assert.equal(businessService.isAutoStatus(config), false);
+});
+
+test('isAutoStatus reports which mode is driving the panel', () => {
+  assert.equal(businessService.isAutoStatus(statusConfig(ALWAYS_OPEN, { auto: true })), true);
+  assert.equal(businessService.isAutoStatus(statusConfig(ALWAYS_OPEN, { auto: false })), false);
+  assert.equal(businessService.isAutoStatus(statusConfig(ALWAYS_OPEN, {})), true, 'absent means automatic');
+});
+
+test('office hours track the wall clock across a daylight-saving change', () => {
+  // 12:00-21:00 in America/New_York must stay 12:00-21:00 local on both sides
+  // of the switch. A fixed UTC-5 offset would drift by an hour in summer.
+  const { DEFAULT_CONFIG } = require('../src/config/defaults');
+  const config = { business: DEFAULT_CONFIG.business };
+  assert.equal(config.business.timezone, 'America/New_York');
+
+  const at = (iso) => businessService.availability(config, new Date(iso));
+
+  // Winter: EST is UTC-5, so noon local is 17:00Z.
+  assert.equal(at('2026-01-14T16:59:00Z').open, false);
+  assert.equal(at('2026-01-14T17:00:00Z').open, true);
+  assert.equal(at('2026-01-15T01:59:00Z').open, true);
+  assert.equal(at('2026-01-15T02:00:00Z').open, false);
+
+  // Summer: EDT is UTC-4, so noon local is 16:00Z — one hour earlier in UTC,
+  // same hour on the clock.
+  assert.equal(at('2026-07-14T15:59:00Z').open, false);
+  assert.equal(at('2026-07-14T16:00:00Z').open, true);
+  assert.equal(at('2026-07-15T00:59:00Z').open, true);
+  assert.equal(at('2026-07-15T01:00:00Z').open, false);
+});

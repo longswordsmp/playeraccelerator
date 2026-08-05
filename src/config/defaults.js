@@ -113,7 +113,12 @@ const DEFAULT_CONFIG = {
 
   // ── Business operations ────────────────────────────────────────────────────
   business: {
-    timezone: 'UTC',
+    /**
+     * IANA name, not a fixed offset. `America/New_York` is EST in winter and
+     * EDT in summer, so "12 PM" stays 12 PM local across the DST switch —
+     * which a hard-coded `UTC-5` would not.
+     */
+    timezone: 'America/New_York',
     /**
      * 0 = Sunday … 6 = Saturday. `null` means closed.
      * Open every day, 12:00–21:00. Everything outside that window is closed,
@@ -131,7 +136,7 @@ const DEFAULT_CONFIG = {
     /** Target first-response time in minutes, used for SLA reporting. */
     responseTargetMinutes: 240,
     /** Shown when the studio is closed. */
-    outOfHoursMessage: 'We are currently outside office hours (12:00–21:00 daily). Your ticket is logged and will be answered when we reopen.',
+    outOfHoursMessage: 'We are currently outside office hours (12 PM – 9 PM Eastern, daily). Your ticket is logged and will be answered when we reopen.',
     currency: 'USD',
     currencySymbol: '$',
     /** Expose lifetime customer spend on customer profiles. */
@@ -148,8 +153,14 @@ const DEFAULT_CONFIG = {
     note: '',
     updatedAt: null,
     updatedBy: null,
-    /** Follow the configured office hours automatically. */
+    /** Master switch for deriving the status from the schedule at all. */
     autoFromHours: true,
+    /**
+     * Currently following the schedule: open means online, closed means away.
+     * Set to false the moment someone pins a status by hand, and back to true
+     * by `/status set:Auto`.
+     */
+    auto: true,
   },
 
   queue: {

@@ -26,7 +26,12 @@ module.exports = {
     .addStringOption((option) => option
       .setName('set')
       .setDescription('Set the status (staff only).')
-      .addChoices(...Object.entries(STATUSES).map(([value, meta]) => ({ name: `${meta.emoji} ${meta.label}`, value }))))
+      .addChoices(
+        // "Auto" first: it is the mode most studios want, and the one that
+        // stops the board going stale when somebody forgets to flip it back.
+        { name: '🕒 Auto — follow office hours', value: 'auto' },
+        ...Object.entries(STATUSES).map(([value, meta]) => ({ name: `${meta.emoji} ${meta.label}`, value })),
+      ))
     .addStringOption((option) => option
       .setName('note')
       .setDescription('A short note shown on the status panel.')),
@@ -53,12 +58,19 @@ module.exports = {
     const cleanNote = note !== null ? validators.clean(note, { max: 200, allowNewlines: false }) : (config.status?.note ?? '');
     const updated = await businessService.setStatus(interaction.guild, status, member, cleanNote);
 
+    // What the panel now shows, which is not the same as what was asked for
+    // when the schedule is driving it.
+    const shown = STATUSES[businessService.effectiveStatus(updated)] ?? STATUSES.offline;
+
     return safeReply(interaction, {
       embeds: [
         embeds.success({
           config: updated,
           title: 'Status Updated',
-          description: `Availability is now ${STATUSES[status].emoji} **${STATUSES[status].label}**.`,
+          description: status === 'auto'
+            ? `Availability now follows your office hours. Right now that is ${shown.emoji} **${shown.label}**.`
+            : `Availability is now ${shown.emoji} **${shown.label}**, and stays there until you change it. `
+              + 'Use `/status set:Auto` to hand it back to the schedule.',
         }),
         businessService.statusEmbed(updated),
       ],

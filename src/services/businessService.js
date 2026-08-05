@@ -117,8 +117,24 @@ function availability(config, at = new Date()) {
 }
 
 /**
- * Effective developer status: the manually set status, unless the studio is
- * closed and automatic tracking is enabled.
+ * The status actually shown to customers.
+ *
+ * Three modes, in order of precedence:
+ *
+ *   1. `autoFromHours: false` — the stored status is the whole truth. Nothing
+ *      is derived; use this if you would rather drive it entirely by hand.
+ *   2. `status.auto: true` (the default) — the office hours *are* the status.
+ *      Open means online, closed means away, and nobody has to remember to
+ *      flip it twice a day.
+ *   3. `status.auto: false` — somebody pinned a status deliberately, so it is
+ *      respected. The one exception is advertising "online" or "coding" after
+ *      hours, which is a promise the studio is not there to keep; that is
+ *      softened to "away".
+ *
+ * Mode 2 is what makes a schedule useful. Without it a freshly configured guild
+ * shows "offline" forever, because the stored default is `offline` and the old
+ * rule only ever downgraded a status — it never brought one up.
+ *
  * @param {object} config
  */
 function effectiveStatus(config) {
@@ -126,9 +142,16 @@ function effectiveStatus(config) {
   if (config?.status?.autoFromHours === false) return manual;
 
   const { open } = availability(config);
-  // Never override an explicit "busy" signal with "online".
+
+  if (config?.status?.auto !== false) return open ? 'online' : 'away';
+
   if (!open && ['online', 'coding'].includes(manual)) return 'away';
   return manual;
+}
+
+/** Is the status currently being driven by the office hours? */
+function isAutoStatus(config) {
+  return config?.status?.autoFromHours !== false && config?.status?.auto !== false;
 }
 
 /**
@@ -139,10 +162,20 @@ function effectiveStatus(config) {
  * @param {string} [note]
  */
 async function setStatus(guild, status, actor, note = '') {
-  if (!STATUSES[status]) throw new errors.ValidationError('That is not a recognised status.');
+  // `auto` is not a status, it is a mode: it hands control back to the office
+  // hours rather than pinning a value.
+  const auto = status === 'auto';
+  if (!auto && !STATUSES[status]) throw new errors.ValidationError('That is not a recognised status.');
 
   const config = await configService.update(guild, (cfg) => {
-    cfg.setPath('status.current', status);
+    if (auto) {
+      cfg.setPath('status.auto', true);
+    } else {
+      cfg.setPath('status.current', status);
+      // Setting a status by hand pins it. Without this the schedule would
+      // overwrite the choice on the next panel refresh.
+      cfg.setPath('status.auto', false);
+    }
     cfg.setPath('status.note', note.slice(0, 200));
     cfg.setPath('status.updatedAt', new Date());
     cfg.setPath('status.updatedBy', actor.id);
@@ -152,11 +185,17 @@ async function setStatus(guild, status, actor, note = '') {
   const panelService = require('./panelService');
   await panelService.refresh(guild, config, 'status').catch(() => null);
 
+  // `auto` has no STATUSES entry, so the log line is built from what the
+  // schedule currently resolves to rather than from the key itself.
+  const shown = STATUSES[effectiveStatus(config)] ?? STATUSES.offline;
+
   await logService.record(guild, {
     category: 'business',
     event: 'status.change',
-    title: `${STATUSES[status].emoji} Status: ${STATUSES[status].label}`,
-    summary: note || STATUSES[status].description,
+    title: auto
+      ? `${EMOJIS.clock} Status: Following Office Hours`
+      : `${shown.emoji} Status: ${shown.label}`,
+    summary: note || (auto ? `Now ${shown.label.toLowerCase()} by schedule.` : shown.description),
     actorId: actor.id,
   }, config);
 
@@ -189,7 +228,10 @@ function statusEmbed(config) {
     title: `${status.emoji} Developer Status`,
     description: status.description,
     fields,
-    footer: config?.status?.updatedAt ? 'Updated' : 'Live status',
+    // Say which mode is driving this. A pinned status that nobody remembers
+    // pinning is the usual reason a status board goes stale and stops being
+    // believed.
+    footer: isAutoStatus(config) ? 'Follows office hours automatically' : 'Set manually',
   });
 }
 
@@ -232,6 +274,7 @@ module.exports = {
   localTime,
   availability,
   effectiveStatus,
+  isAutoStatus,
   setStatus,
   statusEmbed,
   hoursEmbed,

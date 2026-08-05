@@ -21,6 +21,7 @@ is implemented and wired to the database.
 - [Command reference](#command-reference)
 - [Configuration](#configuration)
 - [Branding and artwork](#branding-and-artwork)
+- [Office hours and status](#office-hours-and-status)
 - [Launch promotion](#launch-promotion)
 - [Architecture](#architecture)
 - [Deployment](#deployment)
@@ -384,6 +385,43 @@ guild is Community-enabled.
 
 ---
 
+## Office hours and status
+
+Hours are configured per weekday in the studio's own timezone, given as an IANA
+name so daylight saving is handled without a date library. The shipped default
+is 12 PM – 9 PM Eastern, seven days a week.
+
+The developer status has three modes:
+
+| Mode | Behaviour |
+| --- | --- |
+| Automatic (default) | The hours *are* the status: open shows online, closed shows away |
+| Pinned | `/status set:Busy` and friends hold until changed, but never advertise "online" out of hours |
+| Manual | `status.autoFromHours: false` — the stored value is used verbatim |
+
+`/status set:Auto` hands a pinned status back to the schedule. The panel footer
+always says which mode is in force, because a pinned status nobody remembers
+pinning is the usual reason a status board goes stale.
+
+To change the schedule on a server that is already set up:
+
+```bash
+npm run configure                                                   # 12 PM - 9 PM Eastern, daily
+npm run configure -- --timezone=Europe/London --open=10:00 --close=18:00
+npm run configure -- --days=1,2,3,4,5 --dry-run                     # weekdays only, preview
+```
+
+This exists because editing `defaults.js` is not enough on its own: configuration
+documents are deep-merged with the *stored* values winning, so anything a guild
+has already written keeps winning. Defaults fix new installs; this fixes existing
+ones. It is idempotent and reports what it changed.
+
+Individual days can also be set from Discord with `/config hours day:Monday
+open:12:00 close:21:00`, and the timezone with `/config business
+timezone:America/New_York`.
+
+---
+
 ## Launch promotion
 
 `/launch start` opens a time-boxed window in which the referral requirement on
@@ -423,7 +461,7 @@ src/
                              permissions · logger · errors · rateLimiter · discord
 
 brand/                       logo, banner and per-panel header artwork
-scripts/                     deploy · doctor · build-panel-art · render-brand
+scripts/                     deploy · doctor · configure · build-panel-art · render-brand
 ```
 
 Principles the codebase actually follows:

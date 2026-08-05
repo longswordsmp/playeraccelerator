@@ -199,7 +199,8 @@ function reviewStars(ticketId) {
 /** Developer status quick-switch row (staff only). */
 function statusButtons() {
   return rows([
-    button({ id: customId.build('status', 'set', 'online'), label: 'Online', emoji: '🟢', style: 'success' }),
+    // "Auto" leads: pinning a status is the exception, not the default.
+    button({ id: customId.build('status', 'set', 'auto'), label: 'Auto', emoji: '🕒', style: 'success' }),
     button({ id: customId.build('status', 'set', 'coding'), label: 'Coding', emoji: '💻', style: 'primary' }),
     button({ id: customId.build('status', 'set', 'streaming'), label: 'Streaming', emoji: '🎮', style: 'primary' }),
     button({ id: customId.build('status', 'set', 'busy'), label: 'Busy', emoji: '🟡', style: 'secondary' }),
