@@ -534,9 +534,16 @@ heap usage, cache sizes and error counts.
 - **Secrets never reach a log sink.** The token, the database URL and any
   credential-shaped key are redacted at the logger, in every destination.
 - **Every input is validated and sanitised.** Control characters, zero-width
-  joiners and bidirectional overrides are stripped; lengths are capped;
-  `$`-prefixed keys and dotted paths are removed before anything reaches Mongo;
-  Mongoose runs with `sanitizeFilter` on.
+  joiners and bidirectional overrides are stripped; lengths are capped; and
+  `$`-prefixed keys and dotted paths are removed before anything is persisted.
+- **Operator injection is prevented at the boundary, not globally.** Discord
+  coerces slash-command options to primitives and the custom-ID protocol decodes
+  to strings, so a query value is never an object. Mongoose's global
+  `sanitizeFilter` is deliberately **off**: it rewrites every `$in`, `$gte` and
+  `$ne` this codebase writes into `{ $eq: <object> }` and throws on `$expr`,
+  which would silently turn working queries into empty results. The reasoning is
+  documented in `src/database/connection.js` and pinned by a regression test that
+  demonstrates exactly what the flag would break.
 - **User-supplied regular expressions are screened for catastrophic backtracking**
   before compiling, and rejected if they match a known exponential shape.
 - **Transcripts escape everything.** A transcript contains whatever a customer

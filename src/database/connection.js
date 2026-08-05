@@ -14,10 +14,36 @@ const { logger } = require('../utils/logger');
 
 const log = logger.child('database');
 
-/** Never let a hostile document shape reach an operator position. */
-mongoose.set('sanitizeFilter', true);
-/** Fail fast on unknown paths instead of silently dropping data. */
+/**
+ * Fail fast on unknown paths instead of silently dropping data.
+ */
 mongoose.set('strictQuery', true);
+
+/**
+ * Operator-injection defence — and why `sanitizeFilter` is deliberately OFF.
+ *
+ * Mongoose's global `sanitizeFilter` rewrites *any* nested object containing a
+ * `$` key into `{ $eq: <object> }`, and throws outright on `$expr`. It cannot
+ * distinguish a hostile value from a query this codebase wrote itself, so
+ * enabling it would silently break every legitimate operator — an open-ticket
+ * count of `{ status: { $in: [...] } }` becomes `{ status: { $eq: { $in: [...] } } }`
+ * and matches nothing. That is a far worse failure than the one it prevents:
+ * queries that quietly return empty results instead of erroring.
+ *
+ * Injection is instead prevented at the boundary, where it is precise:
+ *   • Discord coerces every slash-command option to a primitive, so an option
+ *     value can never arrive as an object.
+ *   • The custom-ID protocol decodes to strings only (see utils/customId).
+ *   • `validators.safeQueryValue` rejects objects and `$`-prefixed strings for
+ *     anything that reaches a filter position.
+ *   • `validators.sanitizeObject` strips `$` keys and dotted paths from any
+ *     object before it is persisted.
+ *   • `strictQuery` above discards conditions on paths that are not in the
+ *     schema, so an unexpected key cannot widen a query.
+ *
+ * A regression test in tests/models.test.js documents this decision by asserting
+ * exactly what the flag would do to real queries.
+ */
 
 let connecting = null;
 let ready = false;

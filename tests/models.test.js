@@ -343,6 +343,56 @@ test('dayKey produces a stable UTC key', () => {
   assert.equal(models.GuildStats.dayKey(new Date('2024-03-16T00:00:01Z')), '2024-03-16');
 });
 
+// ── Injection defence ────────────────────────────────────────────────────────
+
+test('mongoose global sanitizeFilter stays off, and the reason is provable', () => {
+  const mongoose = require('mongoose');
+  assert.notEqual(
+    mongoose.get('sanitizeFilter'),
+    true,
+    'sanitizeFilter must stay off — see the comment in database/connection.js',
+  );
+
+  /*
+   * Why: the helper wraps ANY nested object containing a `$` key in `$eq`,
+   * which destroys the operator queries this codebase legitimately writes.
+   * These assertions fail loudly if anyone re-enables the flag without
+   * understanding the consequence.
+   */
+  const sanitize = require('mongoose/lib/helpers/query/sanitizeFilter');
+
+  const openTickets = sanitize({ guildId: 'g', status: { $in: ['open', 'claimed', 'pending'] } });
+  assert.deepEqual(
+    openTickets.status,
+    { $eq: { $in: ['open', 'claimed', 'pending'] } },
+    'the flag would turn every $in into an equality match against an object, matching nothing',
+  );
+
+  const expiring = sanitize({ active: true, expiresAt: { $ne: null, $lte: new Date(0) } });
+  assert.ok(expiring.expiresAt.$eq, 'expiring punishments would never be found');
+
+  assert.throws(
+    () => sanitize({ $expr: { $gte: [1, 2] } }),
+    /not allowed with sanitizeFilter/,
+    'the outstanding-reviews query uses $expr and would throw outright',
+  );
+});
+
+test('the query values this codebase produces are always primitives', () => {
+  const validators = require('../src/utils/validators');
+  const customId = require('../src/utils/customId');
+
+  // A forged custom ID cannot smuggle an object into a filter — the protocol
+  // decodes to strings, so the worst case is a CastError, never a match-all.
+  const forged = customId.build('ticket', 'close', JSON.stringify({ $ne: null }));
+  const parsed = customId.parse(forged);
+  assert.equal(typeof parsed.args[0], 'string');
+
+  // And anything routed through safeQueryValue is rejected outright.
+  assert.throws(() => validators.safeQueryValue({ $ne: null }), /Invalid/);
+  assert.throws(() => validators.safeQueryValue('$where'), /Invalid/);
+});
+
 // ── Counter keys ─────────────────────────────────────────────────────────────
 
 test('counters are namespaced per guild and sequence', () => {
