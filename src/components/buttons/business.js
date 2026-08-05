@@ -27,7 +27,9 @@ module.exports = [
         async run(interaction, { config, member, args }) {
           const [status] = args;
           if (!STATUSES[status]) throw new errors.ValidationError('That is not a recognised status.');
-          await businessService.setStatus(interaction.guild, status, member);
+          // The quick-switch buttons change availability only — an existing
+          // status note is preserved, since clearing it was never asked for.
+          await businessService.setStatus(interaction.guild, status, member, config.status?.note ?? '');
           return safeReply(interaction, {
             embeds: [embeds.notice(
               `Status set to ${STATUSES[status].emoji} **${STATUSES[status].label}**. The public panel has been updated.`,

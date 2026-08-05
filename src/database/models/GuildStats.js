@@ -89,11 +89,15 @@ const dayKey = (date = new Date()) => date.toISOString().slice(0, 10);
  * @param {Date} [date]
  */
 guildStatsSchema.statics.bump = function bump(guildId, increments, date = new Date()) {
-  return this.updateOne(
-    { guildId, date: dayKey(date) },
-    { $inc: increments, $setOnInsert: { guildId, date: dayKey(date) } },
-    { upsert: true },
-  ).catch(() => null); // metrics must never break a feature
+  const key = dayKey(date);
+  // MongoDB rejects an empty `$inc`, so a call with no counters becomes a plain
+  // upsert — callers use that form to guarantee today's document exists.
+  const update = Object.keys(increments ?? {}).length
+    ? { $inc: increments, $setOnInsert: { guildId, date: key } }
+    : { $setOnInsert: { guildId, date: key } };
+
+  return this.updateOne({ guildId, date: key }, update, { upsert: true })
+    .catch(() => null); // metrics must never break a feature
 };
 
 /**

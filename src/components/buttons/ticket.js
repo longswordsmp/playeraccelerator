@@ -17,7 +17,7 @@ const customId = require('../../utils/customId');
 const errors = require('../../utils/errors');
 const { TICKET_TYPES, PRIORITIES } = require('../../config/server');
 const { EMOJIS } = require('../../config/branding');
-const { safeReply, safeDefer } = require('../../utils/discord');
+const { safeReply, safeDefer, safeSend, fetchMember } = require('../../utils/discord');
 const { padId } = require('../../utils/formatters');
 const { Ticket } = require('../../database/models');
 
@@ -85,7 +85,6 @@ module.exports = {
         });
 
         // Take them straight to the form for this service.
-        const { safeSend } = require('../../utils/discord');
         await safeSend(channel, {
           content: `<@${interaction.user.id}>`,
           embeds: [embeds.info({
@@ -232,13 +231,23 @@ module.exports = {
       access: 'support',
       async run(interaction, { config, args }) {
         const ticket = await resolveTicket(interaction, args);
+
+        // Resolve names so the remove menu reads as people, not snowflakes.
+        // Anyone who has since left is still listed, so they can be cleaned up.
+        const participants = await Promise.all(
+          ticket.participants.slice(0, 25).map(async (id) => {
+            const resolved = await fetchMember(interaction.guild, id);
+            return { id, label: resolved?.user?.tag ?? `Left the server (${id})` };
+          }),
+        );
+
         return safeReply(interaction, {
           embeds: [embeds.info({
             config,
             title: `${EMOJIS.users} Ticket Members`,
             description:
               `**Customer:** <@${ticket.userId}>\n` +
-              `**Additional:** ${ticket.participants.length ? ticket.participants.map((id) => `<@${id}>`).join(', ') : '_none_'}`,
+              `**Additional:** ${participants.length ? participants.map((entry) => `<@${entry.id}>`).join(', ') : '_none_'}`,
             footer: 'Pick someone to add, or use the remove menu below.',
           })],
           components: [
@@ -246,11 +255,11 @@ module.exports = {
               id: customId.build('ticket', 'addMember', ticket._id.toString()),
               placeholder: 'Add a member to this ticket…',
             })),
-            ...(ticket.participants.length
+            ...(participants.length
               ? [components.row(components.select({
                 id: customId.build('ticket', 'removeMember', ticket._id.toString()),
                 placeholder: 'Remove a member…',
-                options: ticket.participants.slice(0, 25).map((id) => ({ label: `User ${id}`, value: id })),
+                options: participants.map((entry) => ({ label: entry.label, value: entry.id })),
               }))]
               : []),
           ],
