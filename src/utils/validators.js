@@ -180,8 +180,22 @@ function escapeRegex(value) {
 function compilePattern(pattern, flags = 'i') {
   const source = String(pattern ?? '').trim();
   if (!source || source.length > 200) return null;
-  // Nested unbounded quantifiers are the classic ReDoS shape — refuse them.
-  if (/(\(\?:.*\+\)|\)\s*[*+]\s*[*+]|\((?:[^)]*[*+]){2,}[^)]*\)\s*[*+])/.test(source)) return null;
+
+  /*
+   * Reject the classic catastrophic-backtracking shapes before compiling.
+   * The dangerous form is a quantified group whose body is itself quantified —
+   * `(a+)+`, `(a*)*`, `(\d+|x)*`, `(?:ab+)+` — because the engine can split the
+   * same input across the inner and outer quantifiers exponentially many ways.
+   *
+   * `[^()\\]|\\.` matches a group body without nesting or escape confusion, so
+   * `\(` and `\+` inside a pattern are not mistaken for structure.
+   */
+  const QUANTIFIED_GROUP_BODY = /\((?:\?[:=!<]*)?(?:[^()\\]|\\.)*[*+}](?:[^()\\]|\\.)*\)\s*[*+{]/;
+  // Two adjacent quantifiers, e.g. `a+*` or `)+ *`.
+  const STACKED_QUANTIFIERS = /[*+}]\s*[*+]/;
+
+  if (QUANTIFIED_GROUP_BODY.test(source) || STACKED_QUANTIFIERS.test(source)) return null;
+
   try {
     return new RegExp(source, flags);
   } catch {

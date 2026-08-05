@@ -1,0 +1,66 @@
+# Production stack: the bot plus its own MongoDB instance.
+#
+#   cp .env.example .env      # fill in BOT_TOKEN, CLIENT_ID, OWNER_ID
+#   docker compose up -d
+#   docker compose logs -f bot
+#
+# The bot reaches Mongo over the internal network, so the database port is not
+# published to the host. Remove the `ports` comment below only if you need to
+# connect from outside the stack.
+
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_DATABASE: player-accelerator
+    volumes:
+      - mongo-data:/data/db
+      - mongo-config:/data/configdb
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    # ports:
+    #   - "127.0.0.1:27017:27017"
+    networks:
+      - studio
+
+  bot:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      # Overrides .env so the container always targets the compose service.
+      DATABASE_URL: mongodb://mongo:27017/player-accelerator
+      NODE_ENV: production
+    volumes:
+      - transcripts:/app/transcripts
+      - backups:/app/backups
+      - logs:/app/logs
+    networks:
+      - studio
+    # A bot is not CPU-bound; these limits keep it a good neighbour on a small VPS.
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+        reservations:
+          memory: 256M
+
+networks:
+  studio:
+    driver: bridge
+
+volumes:
+  mongo-data:
+  mongo-config:
+  transcripts:
+  backups:
+  logs:
