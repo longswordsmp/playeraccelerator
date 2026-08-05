@@ -187,6 +187,13 @@ async function create({ guild, user, type, config = null, subject = '' }) {
     throw new errors.ConflictError('That service is not currently accepting new requests.');
   }
 
+  // Free commissions are earned through referrals, not simply requested.
+  if (type === 'free-commission' && cfg.referrals?.enabled) {
+    const inviteService = require('./inviteService');
+    const { allowed, reason } = await inviteService.canClaimFreeCommission(guild.id, user.id, cfg);
+    if (!allowed) throw new errors.ConflictError(reason);
+  }
+
   // One customer must not be able to spam the queue.
   const openCount = await Ticket.countOpenFor(guild.id, user.id);
   const max = cfg.tickets.maxOpenPerUser ?? 3;

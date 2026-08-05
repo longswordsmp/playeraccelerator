@@ -14,6 +14,7 @@ const { REQUIRED_BOT_PERMISSIONS } = require('../../config/permissions');
 const commandHandler = require('../../handlers/commandHandler');
 const configService = require('../../services/configService');
 const scheduler = require('../../services/schedulerService');
+const inviteService = require('../../services/inviteService');
 const permissions = require('../../utils/permissions');
 const { logger } = require('../../utils/logger');
 const { number } = require('../../utils/formatters');
@@ -82,6 +83,13 @@ module.exports = {
     };
     setPresence();
     client.addInterval(setPresence, 15 * 60_000);
+
+    // ── Invite attribution ──────────────────────────────────────────────────
+    // Referral credit works by diffing invite use counts, so the baseline has
+    // to exist before the first join is processed.
+    await inviteService.primeAll(client).catch((err) => {
+      log.warn(`Invite cache could not be primed: ${err.message}`);
+    });
 
     // ── Background jobs ─────────────────────────────────────────────────────
     scheduler.start(client);

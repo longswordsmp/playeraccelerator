@@ -30,6 +30,7 @@ const userSchema = new Schema(
 
     // ── Status flags ────────────────────────────────────────────────────────
     verified: { type: Boolean, default: false },
+    verifiedAt: { type: Date, default: null },
     isCustomer: { type: Boolean, default: false },
     isVip: { type: Boolean, default: false },
     isStaff: { type: Boolean, default: false },
@@ -61,6 +62,32 @@ const userSchema = new Schema(
       flagReason: { type: String, default: '' },
     },
 
+    // ── Referrals ───────────────────────────────────────────────────────────
+    referrals: {
+      /** Who invited this member, resolved at join time. */
+      invitedBy: { type: String, default: null },
+      /** The invite code they arrived through. */
+      inviteCode: { type: String, default: '' },
+      /** Invitees who joined through this member and still count. */
+      credited: [
+        {
+          userId: { type: String, required: true },
+          username: { type: String, default: '' },
+          joinedAt: { type: Date, default: Date.now },
+          /** Cleared if they leave inside the grace window. */
+          revoked: { type: Boolean, default: false },
+          revokedReason: { type: String, default: '' },
+        },
+      ],
+      /** Denormalised count of non-revoked credits. */
+      count: { type: Number, default: 0 },
+      /** Set once the free-commission threshold has been reached. */
+      unlockedFreeCommission: { type: Boolean, default: false },
+      unlockedAt: { type: Date, default: null },
+      /** Free commissions already claimed against this progress. */
+      freeCommissionsUsed: { type: Number, default: 0 },
+    },
+
     /** Free-form staff notes attached to the member. */
     notes: [
       {
@@ -79,6 +106,8 @@ const userSchema = new Schema(
 userSchema.index({ guildId: 1, userId: 1 }, { unique: true });
 userSchema.index({ guildId: 1, isCustomer: 1, 'stats.completedOrders': -1 });
 userSchema.index({ guildId: 1, lastActivityAt: -1 });
+userSchema.index({ guildId: 1, 'referrals.count': -1 });
+userSchema.index({ guildId: 1, 'referrals.invitedBy': 1 });
 
 /**
  * Fetch or create the record for a member.

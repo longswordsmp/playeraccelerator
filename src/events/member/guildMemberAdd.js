@@ -15,6 +15,7 @@ const { Events } = require('discord.js');
 const configService = require('../../services/configService');
 const logService = require('../../services/logService');
 const antiRaid = require('../../security/antiRaid');
+const inviteService = require('../../services/inviteService');
 const embeds = require('../../utils/embeds');
 const components = require('../../utils/components');
 const customId = require('../../utils/customId');
@@ -56,10 +57,21 @@ module.exports = {
     // If raid protection removed them, stop here.
     if (raid.action && ['kick', 'ban'].includes(raid.action)) return;
 
+    // ── 2b. Referral attribution ────────────────────────────────────────────
+    // Runs before the welcome so the nudge can mention their progress. Must not
+    // be able to break the join flow, hence the catch.
+    const referral = await inviteService.creditJoin(member, config).catch((err) => {
+      log.debug('Referral attribution failed', { message: err.message });
+      return null;
+    });
+
     // ── 3. Automatic roles ──────────────────────────────────────────────────
+    // With verification enabled, joining grants nothing — the member has to
+    // press the verify button. That is the entire point of the gate.
+    const verificationGates = config.verify?.enabled && !member.user.bot;
     const roleIds = member.user.bot
       ? config.autoRoles?.onBotJoin ?? []
-      : config.autoRoles?.onJoin ?? [];
+      : verificationGates ? [] : config.autoRoles?.onJoin ?? [];
 
     const grantable = roleIds
       .map((roleId) => member.guild.roles.cache.get(roleId))
@@ -84,6 +96,7 @@ module.exports = {
     const doc = content.WELCOME;
     const ticketChannelId = config.channels?.createTicket;
     const rulesChannelId = config.channels?.rules;
+    const verifyChannelId = config.channels?.verify;
 
     const welcomeEmbed = embeds.panel({
       config,
@@ -92,12 +105,17 @@ module.exports = {
       description:
         `${doc.intro}\n\n` +
         [
+          // Verification comes first when it gates everything else.
+          verificationGates && verifyChannelId ? `${EMOJIS.success} <#${verifyChannelId}> — **verify here first**` : null,
           ticketChannelId ? `${EMOJIS.ticket} <#${ticketChannelId}> — start a project` : null,
           rulesChannelId ? `${EMOJIS.logs} <#${rulesChannelId}> — read the guidelines` : null,
         ].filter(Boolean).join('\n'),
       fields: [
         { name: 'What we build', value: 'Discord bots · Minecraft plugins · Websites · APIs · Automation · Custom software' },
         { name: 'How to start', value: 'Open a ticket, describe what you need, and you will get a fixed-price quote before any work begins.' },
+        ...(referral?.inviterId
+          ? [{ name: 'Invited by', value: `<@${referral.inviterId}>` }]
+          : []),
       ],
       author: { name: member.user.tag, iconURL: member.user.displayAvatarURL({ size: 128 }) },
       footer: `Member #${member.guild.memberCount}`,
@@ -112,19 +130,27 @@ module.exports = {
       await safeDm(member.user, { embeds: [welcomeEmbed] });
     }
 
-    // ── 5. Ticket channel nudge, auto-cleaned ───────────────────────────────
-    if (config.welcome?.ticketNudge !== false && ticketChannelId) {
-      const ticketChannel = member.guild.channels.cache.get(ticketChannelId);
-      const nudge = await safeSend(ticketChannel, {
+    // ── 5. Nudge, auto-cleaned ──────────────────────────────────────────────
+    // Point them at verification when it gates the server, and at the ticket
+    // panel when it does not — nudging someone toward a channel they cannot
+    // see yet would just be confusing.
+    const nudgeChannelId = verificationGates ? (verifyChannelId ?? ticketChannelId) : ticketChannelId;
+    if (config.welcome?.ticketNudge !== false && nudgeChannelId) {
+      const nudgeChannel = member.guild.channels.cache.get(nudgeChannelId);
+      const nudge = await safeSend(nudgeChannel, {
         content: `${member}`,
         embeds: [embeds.info({
           config,
-          description:
-            `Welcome, ${member}! Use the button on the panel above to open an order or request a service. ` +
-            'This message disappears shortly to keep the channel clean.',
+          description: verificationGates
+            ? `Welcome, ${member}! Press **Verify Me** below to unlock the server. ` +
+              'This message disappears shortly to keep the channel clean.'
+            : `Welcome, ${member}! Use the button below to open an order or request a service. ` +
+              'This message disappears shortly to keep the channel clean.',
         })],
         components: components.rows([
-          components.button({ id: customId.build('ticket', 'open'), label: 'Create Ticket', emoji: EMOJIS.ticket, style: 'primary' }),
+          verificationGates
+            ? components.button({ id: customId.build('verify', 'confirm'), label: 'Verify Me', emoji: EMOJIS.success, style: 'success' })
+            : components.button({ id: customId.build('ticket', 'open'), label: 'Create Ticket', emoji: EMOJIS.ticket, style: 'primary' }),
         ]),
       });
       deleteAfter(nudge, (config.welcome?.ticketNudgeSeconds ?? 15) * 1000);

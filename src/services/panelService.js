@@ -61,6 +61,87 @@ async function welcomePanel(guild, config) {
   };
 }
 
+/** Verification gate. */
+async function verifyPanel(guild, config) {
+  const rulesChannel = config.channels?.rules;
+
+  return {
+    embeds: [embeds.panel({
+      config,
+      title: `${EMOJIS.success} Verify Your Account`,
+      description:
+        'One click and the rest of the server opens up.\n\n' +
+        'This exists to keep automated raid accounts out of the customer channels. ' +
+        'It takes a second and asks nothing of you beyond pressing the button.',
+      fields: [
+        {
+          name: 'What happens',
+          value:
+            `${EMOJIS.arrow} You get the **Verified** role\n` +
+            `${EMOJIS.arrow} Every public channel becomes visible\n` +
+            `${EMOJIS.arrow} You can open tickets and request quotes`,
+        },
+        ...(rulesChannel
+          ? [{ name: 'Before you do', value: `Have a look at <#${rulesChannel}>. Verifying means you have read it.` }]
+          : []),
+        ...(config.verify?.minAccountAgeDays > 0
+          ? [{ name: 'Note', value: `Accounts must be at least **${config.verify.minAccountAgeDays} days** old to verify.` }]
+          : []),
+      ],
+      footer: 'We never ask you to log in anywhere, or for any password or token.',
+    })],
+    components: components.rows([
+      components.button({
+        id: customId.build('verify', 'confirm'),
+        label: 'Verify Me',
+        emoji: EMOJIS.success,
+        style: 'success',
+      }),
+    ]),
+  };
+}
+
+/** Free portfolio commission programme, gated behind referrals. */
+async function freeCommissionPanel(guild, config) {
+  const doc = content.FREE_COMMISSION;
+  const required = config.referrals?.requiredForFreeCommission ?? 3;
+  const graceHours = config.referrals?.revokeIfLeaveWithinHours ?? 0;
+
+  return {
+    embeds: [embeds.panel({
+      config,
+      title: `${EMOJIS.star} ${doc.title}`,
+      description: doc.intro,
+      fields: [
+        {
+          name: 'How to unlock an application',
+          value:
+            `Invite **${required} people** who join and stay.\n\n` +
+            `${EMOJIS.arrow} Run \`/invites\` to get your personal link and see your progress\n` +
+            `${EMOJIS.arrow} Progress updates automatically the moment someone joins through it\n` +
+            `${EMOJIS.arrow} You are told as soon as you unlock it`,
+        },
+        {
+          name: 'What does not count',
+          value:
+            `${EMOJIS.bullet} Inviting yourself on another account\n` +
+            `${EMOJIS.bullet} Accounts created in the last ${config.referrals?.minInviteeAccountAgeDays ?? 7} days\n` +
+            `${EMOJIS.bullet} Bots\n` +
+            `${EMOJIS.bullet} Anyone already counted before` +
+            (graceHours > 0 ? `\n${EMOJIS.bullet} Anyone who leaves again within ${graceHours} hours` : ''),
+        },
+        ...doc.sections,
+      ],
+      footer: doc.footer,
+    })],
+    components: components.rows([
+      components.button({ id: customId.build('referral', 'progress'), label: 'My Progress', emoji: EMOJIS.user, style: 'primary' }),
+      components.button({ id: customId.build('referral', 'link'), label: 'Get My Invite Link', emoji: EMOJIS.link, style: 'secondary' }),
+      components.button({ id: customId.build('referral', 'leaderboard'), label: 'Leaderboard', emoji: '🏆', style: 'secondary' }),
+    ]),
+  };
+}
+
 /** Rules panel. */
 const rulesPanel = async (guild, config) => ({ embeds: [embeds.fromDocument(content.RULES, { config, title: `${EMOJIS.logs} ${content.RULES.title}` })] });
 
@@ -310,6 +391,8 @@ async function performancePanel(guild, config) {
 /** Registry of every panel the bot owns. */
 const PANELS = {
   welcome: { build: welcomePanel, channel: 'welcome' },
+  verify: { build: verifyPanel, channel: 'verify' },
+  freeCommission: { build: freeCommissionPanel, channel: 'freeCommissions' },
   rules: { build: rulesPanel, channel: 'rules' },
   faq: { build: faqPanel, channel: 'faq' },
   tos: { build: tosPanel, channel: 'tos' },

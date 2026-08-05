@@ -139,6 +139,7 @@ const CATEGORIES = Object.freeze([
     access: 'public',
     channels: [
       { key: 'welcome', name: '👋│welcome', topic: 'Welcome to the studio — start here.', access: 'readonly', panel: 'welcome' },
+      { key: 'verify', name: '✅│verify', topic: 'Verify to unlock the rest of the server.', access: 'readonly', panel: 'verify' },
       { key: 'rules', name: '📜│rules', topic: 'Community guidelines. Membership implies acceptance.', access: 'readonly', panel: 'rules' },
       { key: 'faq', name: '❓│faq', topic: 'Answers to the questions we are asked most.', access: 'readonly', panel: 'faq' },
       { key: 'announcements', name: '📢│announcements', topic: 'Studio updates, releases and maintenance notices.', access: 'readonly' },
@@ -154,6 +155,7 @@ const CATEGORIES = Object.freeze([
     access: 'public',
     channels: [
       { key: 'createTicket', name: '🎫│create-ticket', topic: 'Open a request — orders, support, partnerships.', access: 'readonly', panel: 'ticket' },
+      { key: 'freeCommissions', name: '🎁│free-service', topic: 'Earn a free build by inviting people who stay.', access: 'readonly', panel: 'freeCommission' },
       { key: 'activeOrders', name: '📋│active-orders', topic: 'Projects currently in development.', access: 'readonly' },
       { key: 'completedOrders', name: '✅│completed-orders', topic: 'Delivered projects.', access: 'readonly' },
       { key: 'orderStatus', name: '📦│order-status', topic: 'Live delivery status for active engagements.', access: 'readonly' },

@@ -470,6 +470,8 @@ async function run({ interaction, guild, config, options }) {
     cfg.setPath('channels', channels);
     cfg.setPath('logChannels', logChannels);
     cfg.setPath('autoRoles.onJoin', roles.verified ? [roles.verified] : []);
+    // The verify button grants this role; joining alone does not.
+    cfg.setPath('verify.roleId', roles.verified ?? '');
     cfg.setPath('autoRoles.onBotJoin', roles.bot ? [roles.bot] : []);
     cfg.setPath('autoRoles.onFirstPurchase', roles.customer ?? '');
     cfg.setPath('autoRoles.onVip', roles.vip ?? '');

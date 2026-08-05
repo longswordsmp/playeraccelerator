@@ -10,13 +10,21 @@
  */
 
 /** Core palette. Hex integers so they can be handed straight to EmbedBuilder. */
+/**
+ * Core palette, sampled directly from the logo and banner artwork in `brand/`
+ * so embeds sit against the imagery rather than clashing with it:
+ *   #818cf8 → #6366f1 → #a855f7   the mark's gradient
+ *   #242840 → #141721             the surface behind it
+ */
 const COLORS = Object.freeze({
-  /** Primary indigo — default for informational and neutral embeds. */
+  /** Primary indigo — the midpoint of the logo gradient. */
   primary: 0x6366f1,
-  /** Violet accent — panels, highlights, premium surfaces. */
-  accent: 0x8b5cf6,
-  /** Deep navy — used for large "surface" embeds such as rules/ToS. */
-  surface: 0x1e1f29,
+  /** Violet accent — the logo gradient's end stop, used for panels. */
+  accent: 0xa855f7,
+  /** Light indigo — the gradient's start stop, for highlights. */
+  highlight: 0x818cf8,
+  /** Deep navy — the artwork's surface colour, for large document embeds. */
+  surface: 0x242840,
   /** Discord dark background — blends the embed into the client. */
   blend: 0x2b2d31,
   /** White accent — used sparingly for maximum contrast headers. */

@@ -11,6 +11,7 @@ const configService = require('../../services/configService');
 const logService = require('../../services/logService');
 const antiRaid = require('../../security/antiRaid');
 const antiNuke = require('../../security/antiNuke');
+const inviteService = require('../../services/inviteService');
 const { User, GuildStats } = require('../../database/models');
 const { EMOJIS } = require('../../config/branding');
 const { timestamp, duration } = require('../../utils/formatters');
@@ -33,6 +34,8 @@ module.exports = {
     await GuildStats.bump(member.guild.id, { 'members.leaves': 1 });
 
     await antiRaid.onLeave(member, config);
+    // Revoke referral credit if they left inside the grace window.
+    await inviteService.revokeOnLeave(member, config).catch(() => null);
     // Detects a kick, which is a monitored destructive action.
     await antiNuke.onMemberRemove(member).catch(() => null);
 

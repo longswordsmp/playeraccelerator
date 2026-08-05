@@ -87,6 +87,8 @@ const configurationSchema = new Schema(
     announcements: { type: Schema.Types.Mixed, default: () => clone(DEFAULT_CONFIG.announcements) },
     autoRoles: { type: Schema.Types.Mixed, default: () => clone(DEFAULT_CONFIG.autoRoles) },
     welcome: { type: Schema.Types.Mixed, default: () => clone(DEFAULT_CONFIG.welcome) },
+    verify: { type: Schema.Types.Mixed, default: () => clone(DEFAULT_CONFIG.verify) },
+    referrals: { type: Schema.Types.Mixed, default: () => clone(DEFAULT_CONFIG.referrals) },
 
     moderation: { type: Schema.Types.Mixed, default: () => clone(DEFAULT_CONFIG.moderation) },
     automod: { type: Schema.Types.Mixed, default: () => clone(DEFAULT_CONFIG.automod) },

@@ -25,8 +25,8 @@ const { keyValueBlock, truncate } = require('../../utils/formatters');
 /** Sections that `/config view` and `/config reset` understand. */
 const SECTIONS = [
   'brand', 'theme', 'tickets', 'business', 'reviews', 'portfolio', 'promotion',
-  'queue', 'welcome', 'autoRoles', 'moderation', 'automod', 'links',
-  'antiRaid', 'antiNuke', 'logging', 'security', 'backups', 'reports',
+  'queue', 'welcome', 'verify', 'referrals', 'autoRoles', 'moderation', 'automod',
+  'links', 'antiRaid', 'antiNuke', 'logging', 'security', 'backups', 'reports',
 ];
 
 /** Render a configuration section as a readable block. */
@@ -189,6 +189,22 @@ module.exports = {
       .addBooleanOption((option) => option.setName('direct-message').setDescription('Also send it by DM.'))
       .addBooleanOption((option) => option.setName('ticket-nudge').setDescription('Nudge new members in the ticket channel.'))
       .addIntegerOption((option) => option.setName('nudge-seconds').setDescription('How long the nudge survives.').setMinValue(5).setMaxValue(300)))
+
+    .addSubcommand((sub) => sub
+      .setName('verify')
+      .setDescription('Configure the verification gate.')
+      .addBooleanOption((option) => option.setName('enabled').setDescription('Require members to press Verify before getting a role.'))
+      .addRoleOption((option) => option.setName('role').setDescription('Role granted on verification.'))
+      .addIntegerOption((option) => option.setName('min-account-age').setDescription('Minimum account age in days (0 = no check).').setMinValue(0).setMaxValue(365)))
+
+    .addSubcommand((sub) => sub
+      .setName('referrals')
+      .setDescription('Configure referral tracking and the free commission gate.')
+      .addBooleanOption((option) => option.setName('enabled').setDescription('Track referrals and gate free commissions behind them.'))
+      .addIntegerOption((option) => option.setName('required').setDescription('Successful invites needed for a free commission.').setMinValue(1).setMaxValue(50))
+      .addIntegerOption((option) => option.setName('min-invitee-age').setDescription('Ignore invitees whose account is newer than N days.').setMinValue(0).setMaxValue(365))
+      .addIntegerOption((option) => option.setName('revoke-hours').setDescription('Revoke credit if the invitee leaves within N hours (0 = never).').setMinValue(0).setMaxValue(720))
+      .addBooleanOption((option) => option.setName('announce').setDescription('Announce when someone unlocks the programme.')))
 
     .addSubcommand((sub) => sub
       .setName('autorole')
@@ -626,6 +642,33 @@ module.exports = {
           'ticket-nudge': bool('welcome.ticketNudge'),
           'nudge-seconds': int('welcome.ticketNudgeSeconds'),
         }), { title: 'Welcome Settings Updated' });
+
+      case 'verify': {
+        const changes = collect({
+          enabled: bool('verify.enabled'),
+          'min-account-age': int('verify.minAccountAgeDays'),
+        });
+        const verifyRole = interaction.options.getRole('role');
+        if (verifyRole) {
+          if (!verifyRole.editable) {
+            throw new errors.ValidationError(
+              `I cannot assign **${verifyRole.name}** — it sits at or above my highest role. ` +
+              'Move my role higher in Server Settings → Roles.',
+            );
+          }
+          changes['verify.roleId'] = verifyRole.id;
+        }
+        return apply(changes, { refresh: ['verify'], title: 'Verification Updated' });
+      }
+
+      case 'referrals':
+        return apply(collect({
+          enabled: bool('referrals.enabled'),
+          required: int('referrals.requiredForFreeCommission'),
+          'min-invitee-age': int('referrals.minInviteeAccountAgeDays'),
+          'revoke-hours': int('referrals.revokeIfLeaveWithinHours'),
+          announce: bool('referrals.announceUnlock'),
+        }), { refresh: ['freeCommission'], title: 'Referral Settings Updated' });
 
       case 'autorole': {
         const changes = {};

@@ -103,20 +103,24 @@ const DEFAULT_CONFIG = {
   // ── Business operations ────────────────────────────────────────────────────
   business: {
     timezone: 'UTC',
-    /** 0 = Sunday … 6 = Saturday. `null` means closed. */
+    /**
+     * 0 = Sunday … 6 = Saturday. `null` means closed.
+     * Open every day, 12:00–21:00. Everything outside that window is closed,
+     * and the status panel switches itself to "away" automatically.
+     */
     hours: {
-      0: null,
-      1: { open: '10:00', close: '20:00' },
-      2: { open: '10:00', close: '20:00' },
-      3: { open: '10:00', close: '20:00' },
-      4: { open: '10:00', close: '20:00' },
-      5: { open: '10:00', close: '20:00' },
-      6: { open: '12:00', close: '18:00' },
+      0: { open: '12:00', close: '21:00' },
+      1: { open: '12:00', close: '21:00' },
+      2: { open: '12:00', close: '21:00' },
+      3: { open: '12:00', close: '21:00' },
+      4: { open: '12:00', close: '21:00' },
+      5: { open: '12:00', close: '21:00' },
+      6: { open: '12:00', close: '21:00' },
     },
     /** Target first-response time in minutes, used for SLA reporting. */
     responseTargetMinutes: 240,
     /** Shown when the studio is closed. */
-    outOfHoursMessage: 'We are currently outside office hours. Your ticket is logged and answered on the next business day.',
+    outOfHoursMessage: 'We are currently outside office hours (12:00–21:00 daily). Your ticket is logged and will be answered when we reopen.',
     currency: 'USD',
     currencySymbol: '$',
     /** Expose lifetime customer spend on customer profiles. */
@@ -198,6 +202,45 @@ const DEFAULT_CONFIG = {
     onFirstPurchase: '',
     /** Role granted when a customer reaches VIP thresholds. */
     onVip: '',
+  },
+
+  /**
+   * Membership verification.
+   *
+   * When enabled, joining does NOT grant the Verified role — the member has to
+   * press the button on the verify panel first. That single deliberate action
+   * is what stops a scripted raid account from reaching your public channels,
+   * because a self-bot joining en masse will not press it.
+   */
+  verify: {
+    enabled: true,
+    /** Role granted on successful verification (set by /setup). */
+    roleId: '',
+    /** Minimum account age in days. 0 disables the check. */
+    minAccountAgeDays: 0,
+    /** Log every verification to the audit stream. */
+    log: true,
+    /** Greet the member in the ticket channel once they verify. */
+    welcomeAfterVerify: true,
+  },
+
+  /**
+   * Referral tracking, which gates the free portfolio commission programme.
+   *
+   * The bot correlates each join against the invite whose use count changed, so
+   * a referral only counts once the invited person has actually joined — an
+   * unused invite link is worth nothing.
+   */
+  referrals: {
+    enabled: true,
+    /** Successful invites needed to unlock a free commission application. */
+    requiredForFreeCommission: 3,
+    /** Only count invitees whose account is at least this many days old. */
+    minInviteeAccountAgeDays: 7,
+    /** Stop counting someone who leaves again within this many hours (0 = off). */
+    revokeIfLeaveWithinHours: 24,
+    /** Announce when a member unlocks the programme. */
+    announceUnlock: true,
   },
 
   welcome: {

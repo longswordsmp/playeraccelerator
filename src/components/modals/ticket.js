@@ -135,6 +135,13 @@ module.exports = {
         const brief = forms.parseFreeCommission(interaction, ticket);
         const order = await orderService.createFromBrief({ guild: interaction.guild, ticket, brief, config });
 
+        // Spend the referral unlock now that an application actually exists,
+        // so the same three invites cannot be reused indefinitely.
+        if (config.referrals?.enabled) {
+          const inviteService = require('../../services/inviteService');
+          await inviteService.consumeUnlock(interaction.guildId, interaction.user.id).catch(() => null);
+        }
+
         ticket.form = {
           'Project Name': brief.title,
           Description: brief.description,
