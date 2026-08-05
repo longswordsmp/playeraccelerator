@@ -8,6 +8,7 @@ const embeds = require('../../utils/embeds');
 const componentsUtil = require('../../utils/components');
 const customId = require('../../utils/customId');
 const errors = require('../../utils/errors');
+const validators = require('../../utils/validators');
 const { Promotion } = require('../../database/models');
 const { EMOJIS } = require('../../config/branding');
 const { safeReply } = require('../../utils/discord');
@@ -16,7 +17,7 @@ const content = require('../../config/content');
 
 /** Resolve the application a control refers to. */
 async function resolveApplication(interaction, args) {
-  const application = await Promotion.findOne({ _id: args[0], guildId: interaction.guildId });
+  const application = await Promotion.findOne({ _id: validators.objectId(args[0], 'application'), guildId: interaction.guildId });
   if (!application) throw new errors.NotFoundError('That application no longer exists.');
   return application;
 }

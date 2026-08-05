@@ -17,7 +17,7 @@ const { padId, money, safeField } = require('../../utils/formatters');
 
 /** Resolve the order a modal refers to. */
 async function resolveOrder(interaction, args) {
-  const order = await Order.findOne({ _id: args[0], guildId: interaction.guildId });
+  const order = await Order.findOne({ _id: validators.objectId(args[0], 'order'), guildId: interaction.guildId });
   if (!order) throw new errors.NotFoundError('That order no longer exists.');
   return order;
 }

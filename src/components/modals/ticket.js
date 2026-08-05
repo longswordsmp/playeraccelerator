@@ -23,7 +23,7 @@ const { padId } = require('../../utils/formatters');
 async function resolveTicket(interaction, args) {
   const [ticketId] = args;
   const ticket = ticketId
-    ? await Ticket.findOne({ _id: ticketId, guildId: interaction.guildId })
+    ? await Ticket.findOne({ _id: validators.objectId(ticketId, 'ticket'), guildId: interaction.guildId })
     : await Ticket.byChannel(interaction.guildId, interaction.channelId);
   if (!ticket) throw new errors.NotFoundError('That ticket no longer exists.');
   return ticket;

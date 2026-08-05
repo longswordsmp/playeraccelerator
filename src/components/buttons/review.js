@@ -11,6 +11,7 @@ const embeds = require('../../utils/embeds');
 const components = require('../../utils/components');
 const customId = require('../../utils/customId');
 const errors = require('../../utils/errors');
+const validators = require('../../utils/validators');
 const { Ticket, Review } = require('../../database/models');
 const { EMOJIS } = require('../../config/branding');
 const { safeReply } = require('../../utils/discord');
@@ -79,7 +80,7 @@ module.exports = {
           throw new errors.ValidationError('That rating is not valid.');
         }
 
-        const ticket = await Ticket.findOne({ _id: ticketId, guildId: interaction.guildId });
+        const ticket = await Ticket.findOne({ _id: validators.objectId(ticketId, 'ticket'), guildId: interaction.guildId });
         if (!ticket) throw new errors.NotFoundError('That ticket no longer exists.');
         if (ticket.userId !== interaction.user.id) {
           throw new errors.PermissionError('Only the customer who opened this ticket can review it.');

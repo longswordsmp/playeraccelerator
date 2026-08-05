@@ -63,6 +63,32 @@ function snowflake(value, label = 'ID') {
 /** Non-throwing snowflake check. */
 const isSnowflake = (value) => SNOWFLAKE.test(String(value ?? '').trim());
 
+/** MongoDB ObjectIds are 24 hexadecimal characters. */
+const OBJECT_ID = /^[0-9a-f]{24}$/i;
+
+/**
+ * Validate a MongoDB ObjectId taken from a component's custom ID.
+ *
+ * This guard matters more than it looks: Mongoose strips `undefined` values out
+ * of a filter, so `findOne({ _id: undefined, guildId })` silently becomes
+ * `findOne({ guildId })` and returns an arbitrary document. A component from an
+ * older panel version, or one whose argument was dropped, must fail closed.
+ *
+ * @param {unknown} value
+ * @param {string} [label]
+ * @returns {string}
+ */
+function objectId(value, label = 'record') {
+  const id = String(value ?? '').trim();
+  if (!OBJECT_ID.test(id)) {
+    throw new ValidationError(`This control is out of date and no longer points at a valid ${label}. Please refresh the panel.`);
+  }
+  return id;
+}
+
+/** Non-throwing ObjectId check. */
+const isObjectId = (value) => OBJECT_ID.test(String(value ?? '').trim());
+
 /**
  * Validate a URL, restricted to http(s) and free of embedded credentials.
  * @param {unknown} value
@@ -281,6 +307,8 @@ module.exports = {
   text,
   snowflake,
   isSnowflake,
+  objectId,
+  isObjectId,
   url,
   extractUrls,
   num,

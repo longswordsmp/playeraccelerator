@@ -378,6 +378,23 @@ test('mongoose global sanitizeFilter stays off, and the reason is provable', () 
   );
 });
 
+test('a missing component argument cannot collapse a lookup into match-any', () => {
+  const validators = require('../src/utils/validators');
+
+  // Mongoose strips undefined out of a filter, so an unguarded
+  // `findOne({ _id: undefined, guildId })` silently becomes `findOne({ guildId })`
+  // and returns an arbitrary document. Prove both halves of that claim.
+  const collapsed = models.Order.findOne({ _id: undefined, guildId: GUILD }).getFilter();
+  assert.deepEqual(collapsed, { guildId: GUILD }, 'undefined really is stripped');
+
+  assert.throws(() => validators.objectId(undefined, 'order'), /out of date/);
+  assert.throws(() => validators.objectId('', 'order'), /out of date/);
+  assert.throws(() => validators.objectId('not-an-object-id', 'order'), /out of date/);
+  assert.equal(validators.objectId('507f1f77bcf86cd799439011'), '507f1f77bcf86cd799439011');
+  assert.equal(validators.isObjectId('507f1f77bcf86cd799439011'), true);
+  assert.equal(validators.isObjectId('nope'), false);
+});
+
 test('the query values this codebase produces are always primitives', () => {
   const validators = require('../src/utils/validators');
   const customId = require('../src/utils/customId');

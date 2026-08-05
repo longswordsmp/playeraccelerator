@@ -20,6 +20,7 @@ const embeds = require('../utils/embeds');
 const components = require('../utils/components');
 const permissions = require('../utils/permissions');
 const errors = require('../utils/errors');
+const validators = require('../utils/validators');
 const { TICKET_TYPE_MAP, PRIORITIES, STATUSES } = require('../config/server');
 const { EMOJIS, COLORS } = require('../config/branding');
 const { safeSend, attempt, fetchMember, resolveTextChannel, safeDm } = require('../utils/discord');
@@ -302,7 +303,7 @@ function mentionSupport(config) {
  */
 async function resolve(interaction, ticketId) {
   const ticket = ticketId
-    ? await Ticket.findOne({ _id: ticketId, guildId: interaction.guildId })
+    ? await Ticket.findOne({ _id: validators.objectId(ticketId, 'ticket'), guildId: interaction.guildId })
     : await Ticket.byChannel(interaction.guildId, interaction.channelId);
 
   if (!ticket) throw new errors.NotFoundError('This channel is not a ticket, or the ticket record no longer exists.');

@@ -22,7 +22,7 @@ module.exports = {
         const [ticketId, ratingRaw] = args;
         const rating = Number(ratingRaw);
 
-        const ticket = await Ticket.findOne({ _id: ticketId, guildId: interaction.guildId });
+        const ticket = await Ticket.findOne({ _id: validators.objectId(ticketId, 'ticket'), guildId: interaction.guildId });
         if (!ticket) throw new errors.NotFoundError('That ticket no longer exists.');
 
         await safeDefer(interaction, { ephemeral: true });

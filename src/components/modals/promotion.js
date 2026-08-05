@@ -14,7 +14,7 @@ const { padId } = require('../../utils/formatters');
 
 /** Resolve the application a modal refers to. */
 async function resolveApplication(interaction, args) {
-  const application = await Promotion.findOne({ _id: args[0], guildId: interaction.guildId });
+  const application = await Promotion.findOne({ _id: validators.objectId(args[0], 'application'), guildId: interaction.guildId });
   if (!application) throw new errors.NotFoundError('That application no longer exists.');
   return application;
 }

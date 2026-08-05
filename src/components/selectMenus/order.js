@@ -7,6 +7,7 @@
 const orderService = require('../../services/orderService');
 const embeds = require('../../utils/embeds');
 const errors = require('../../utils/errors');
+const validators = require('../../utils/validators');
 const permissions = require('../../utils/permissions');
 const { Order } = require('../../database/models');
 const { ORDER_STATUSES } = require('../../config/server');
@@ -14,7 +15,7 @@ const { padId } = require('../../utils/formatters');
 
 /** Resolve the order a menu refers to. */
 async function resolveOrder(interaction, args) {
-  const order = await Order.findOne({ _id: args[0], guildId: interaction.guildId });
+  const order = await Order.findOne({ _id: validators.objectId(args[0], 'order'), guildId: interaction.guildId });
   if (!order) throw new errors.NotFoundError('That order no longer exists.');
   return order;
 }

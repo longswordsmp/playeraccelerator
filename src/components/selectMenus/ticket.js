@@ -10,6 +10,7 @@ const embeds = require('../../utils/embeds');
 const components = require('../../utils/components');
 const customId = require('../../utils/customId');
 const errors = require('../../utils/errors');
+const validators = require('../../utils/validators');
 const { Ticket } = require('../../database/models');
 const { PRIORITIES, TICKET_TYPE_MAP } = require('../../config/server');
 const { EMOJIS } = require('../../config/branding');
@@ -20,7 +21,7 @@ const { padId } = require('../../utils/formatters');
 async function resolveTicket(interaction, args) {
   const [ticketId] = args;
   const ticket = ticketId
-    ? await Ticket.findOne({ _id: ticketId, guildId: interaction.guildId })
+    ? await Ticket.findOne({ _id: validators.objectId(ticketId, 'ticket'), guildId: interaction.guildId })
     : await Ticket.byChannel(interaction.guildId, interaction.channelId);
   if (!ticket) throw new errors.NotFoundError('That ticket no longer exists.');
   return ticket;

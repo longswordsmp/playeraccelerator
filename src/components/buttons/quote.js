@@ -10,13 +10,14 @@
 const orderService = require('../../services/orderService');
 const embeds = require('../../utils/embeds');
 const errors = require('../../utils/errors');
+const validators = require('../../utils/validators');
 const { Order } = require('../../database/models');
 const { safeReply, safeSend, resolveTextChannel } = require('../../utils/discord');
 const { padId, money, timestamp } = require('../../utils/formatters');
 
 /** Resolve the order and verify the presser owns it. */
 async function resolveOwnOrder(interaction, args) {
-  const order = await Order.findOne({ _id: args[0], guildId: interaction.guildId });
+  const order = await Order.findOne({ _id: validators.objectId(args[0], 'order'), guildId: interaction.guildId });
   if (!order) throw new errors.NotFoundError('That order no longer exists.');
   if (order.userId !== interaction.user.id) {
     // Staff can look, but only the customer can accept on their behalf.
