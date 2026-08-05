@@ -682,3 +682,35 @@ test('a localhost database URL is recognised so the error can explain itself', (
     assert.equal(isLocalhostUri(uri), false, uri);
   }
 });
+
+test('connection failures name the actual mistake', () => {
+  const { diagnose } = require('../src/database/connection');
+  const hint = (message, uri) => diagnose(new Error(message), uri) ?? '';
+
+  assert.match(
+    hint('connect ECONNREFUSED 127.0.0.1:27017', 'mongodb://localhost:27017/studio'),
+    /localhost.*means the container itself/s,
+  );
+
+  // MongoDB authenticates against a database, not a server. Hosted providers
+  // create the user in `admin`, so appending a database name to an otherwise
+  // correct URL breaks auth — with a message that never mentions why.
+  assert.match(
+    hint('Authentication failed.', 'mongodb://mongo:pw@mongodb.railway.internal:27017/studio'),
+    /authSource=admin/,
+  );
+
+  // With authSource already set, that advice would be wrong — say something else.
+  assert.doesNotMatch(
+    hint('Authentication failed.', 'mongodb://mongo:pw@host:27017/studio?authSource=admin'),
+    /Append/,
+  );
+  assert.match(
+    hint('Authentication failed.', 'mongodb://mongo:pw@host:27017/studio?authSource=admin'),
+    /username or password is wrong/,
+  );
+
+  // A refused connection to a real host has no obvious single cause.
+  assert.equal(diagnose(new Error('connect ECONNREFUSED 10.0.0.5:27017'), 'mongodb://host:27017/db'), null);
+  assert.equal(diagnose(new Error('some unrelated failure'), 'mongodb://host/db'), null);
+});

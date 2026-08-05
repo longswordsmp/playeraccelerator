@@ -82,6 +82,45 @@ function isLocalhostUri(uri) {
 }
 
 /**
+ * Turn a driver error into a sentence naming the actual mistake.
+ *
+ * The driver's messages are accurate and useless: "ECONNREFUSED 127.0.0.1"
+ * names a machine that was never going to have a database on it, and
+ * "Authentication failed" does not mention that MongoDB authenticates against
+ * a *database*, not a server, so correct credentials fail whenever the auth
+ * database is not the one in the path. Both cost real time to diagnose from
+ * the outside, and both are one-line fixes once named.
+ *
+ * @param {Error} err
+ * @param {string} uri
+ * @returns {string|null} a hint, or null when nothing useful can be said
+ */
+function diagnose(err, uri) {
+  const message = String(err?.message ?? '');
+
+  if (message.includes('ECONNREFUSED') && isLocalhostUri(uri)) {
+    return 'DATABASE_URL points at localhost. If this bot is running on a server, in Docker or on a '
+      + 'platform like Railway, "localhost" means the container itself — not the machine you copied '
+      + 'the URL from. Point it at your hosted database instead.';
+  }
+
+  // Managed MongoDB almost always creates its user in `admin`, while the
+  // driver authenticates against whatever database the path names.
+  if (/authentication failed/i.test(message) && !/authSource=/i.test(uri)) {
+    return 'Authentication failed, and DATABASE_URL has no `authSource`. MongoDB authenticates against '
+      + 'a database, not a server: hosted providers create the user in `admin`, but the driver tries '
+      + 'the one named in the URL. Append `?authSource=admin` to DATABASE_URL and try again.';
+  }
+
+  if (/authentication failed/i.test(message)) {
+    return 'Authentication failed with an `authSource` already set — so the username or password is wrong, '
+      + 'or the user has no access to that database. Re-copy the connection string from your provider.';
+  }
+
+  return null;
+}
+
+/**
  * Connect to MongoDB, retrying with exponential backoff.
  * @param {{ retries?: number }} [options]
  * @returns {Promise<typeof mongoose>}
@@ -115,17 +154,11 @@ async function connect({ retries = 5 } = {}) {
         lastError = err;
         const delay = Math.min(30_000, 2 ** attempt * 1000);
         log.error(`MongoDB connection failed: ${err.message}`);
-        // The single most common deployment mistake is copying a local
-        // DATABASE_URL onto a host. "ECONNREFUSED 127.0.0.1" is technically
-        // accurate and tells you nothing: inside a container localhost is the
-        // container, so the message names a machine that was never going to
-        // have a database on it. Say what is actually wrong, once.
-        if (attempt === 1 && err.message?.includes('ECONNREFUSED') && isLocalhostUri(env.databaseUrl)) {
-          log.error(
-            'DATABASE_URL points at localhost. If this bot is running on a server, in Docker or on a '
-            + 'platform like Railway, "localhost" means the container itself — not the machine you '
-            + 'copied the URL from. Point it at your hosted database instead.',
-          );
+        // Name the likely cause once, on the first failure, rather than
+        // repeating it through every retry.
+        if (attempt === 1) {
+          const hint = diagnose(err, env.databaseUrl);
+          if (hint) log.error(hint);
         }
         if (attempt < retries) {
           log.info(`Retrying in ${Math.round(delay / 1000)}s…`);
@@ -178,4 +211,4 @@ function health() {
 /** Whether the database is currently usable. */
 const isReady = () => mongoose.connection.readyState === 1;
 
-module.exports = { connect, disconnect, syncIndexes, health, isReady, isLocalhostUri, mongoose };
+module.exports = { connect, disconnect, syncIndexes, health, isReady, isLocalhostUri, diagnose, mongoose };

@@ -674,6 +674,19 @@ warnings, statistics and configuration are all intact.
 
 ## Troubleshooting
 
+**`MongoDB connection failed: Authentication failed`** — MongoDB authenticates
+against a *database*, not a server. Hosted providers create the user in `admin`,
+but the driver tries whichever database the URL names, so appending `/samotworks`
+to an otherwise correct connection string breaks it. Append `?authSource=admin`:
+
+```
+mongodb://user:pass@host:27017/samotworks?authSource=admin
+```
+
+**`connect ECONNREFUSED 127.0.0.1:27017`** — `DATABASE_URL` points at localhost.
+Inside a container that means the container itself, not the machine the URL was
+copied from. Point it at the hosted database.
+
 **`Used disallowed intents`**
 Message Content and Server Members are not enabled in the Developer Portal. See
 [Discord setup](#discord-setup).
