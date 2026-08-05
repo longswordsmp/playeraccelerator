@@ -10,6 +10,9 @@
  */
 
 const { Configuration } = require('../database/models');
+const { DEFAULT_CONFIG } = require('../config/defaults');
+
+const { clone } = Configuration;
 const { logger } = require('../utils/logger');
 const { registry } = require('../utils/rateLimiter');
 
@@ -136,4 +139,67 @@ const isConfigured = (config) => Boolean(config?.setup?.completed);
 /** Cache statistics for the diagnostics command. */
 const stats = () => ({ cachedGuilds: cache.size, ttlMs: TTL_MS });
 
-module.exports = { get, save, update, setPaths, invalidate, invalidateAll, channel, logChannel, role, isConfigured, stats };
+/**
+ * Sections `applyProfile` must never overwrite.
+ *
+ * The first six are the wiring `/setup` produced — role ids, channel ids, the
+ * message ids of every published panel. Resetting them would orphan the entire
+ * server: the bot would forget which channel is which and every panel would be
+ * republished as a duplicate. `launch` is here because closing a live, publicly
+ * announced promotion as a side effect of a config tidy-up would be worse than
+ * leaving it slightly stale.
+ */
+const PRESERVED = Object.freeze([
+  'roles', 'channels', 'categories', 'logChannels', 'panels', 'setup', 'launch',
+]);
+
+/**
+ * Bring one configuration document to the studio profile, in memory.
+ *
+ * Shared by `/config apply` and `npm run configure` so the two can never drift.
+ * It takes a document rather than a guild id and writes nothing, which also
+ * makes it testable without a database — Mongoose hydrates, sets and marks
+ * documents entirely offline, so the dangerous part (never clobbering the
+ * wiring) is provable rather than hoped for.
+ *
+ * @param {import('mongoose').HydratedDocument<any>} config
+ * @param {{ timezone: string, hours: object, outOfHoursMessage: string, scheduleOnly?: boolean }} profile
+ * @returns {{ changed: string[] }} the sections whose contents actually differ
+ */
+function applyProfile(config, { timezone, hours, outOfHoursMessage, scheduleOnly = false }) {
+  const before = {};
+  for (const section of Object.keys(DEFAULT_CONFIG)) {
+    before[section] = JSON.stringify(config[section] ?? null);
+  }
+
+  // 1. Reset everything that is not wiring back to the shipped defaults.
+  if (!scheduleOnly) {
+    for (const section of Object.keys(DEFAULT_CONFIG)) {
+      if (PRESERVED.includes(section)) continue;
+      config.set(section, clone(DEFAULT_CONFIG[section]));
+      config.markModified(section);
+    }
+  }
+
+  // 2. Overlay the operating schedule — the part that is genuinely this
+  //    studio's rather than a shipped default.
+  config.setPath('business.timezone', timezone);
+  config.setPath('business.hours', hours);
+  config.setPath('business.outOfHoursMessage', outOfHoursMessage);
+  config.setPath('status.autoFromHours', true);
+  config.setPath('status.auto', true);
+
+  // 3. Point the verification gate back at the role /setup created. Step 1
+  //    blanked `verify.roleId`, and the id itself lives in the preserved
+  //    `roles` section — without this the gate would have nothing to grant and
+  //    every verify press would fail.
+  const verifiedRole = config.roles?.verified;
+  if (verifiedRole) config.setPath('verify.roleId', verifiedRole);
+
+  const changed = Object.keys(DEFAULT_CONFIG)
+    .filter((section) => before[section] !== JSON.stringify(config[section] ?? null));
+
+  return { changed };
+}
+
+module.exports = { get, save, update, setPaths, invalidate, invalidateAll, channel, logChannel, role, isConfigured, stats, applyProfile, PRESERVED };

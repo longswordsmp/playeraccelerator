@@ -16,13 +16,15 @@ const embeds = require('../../utils/embeds');
 const validators = require('../../utils/validators');
 const errors = require('../../utils/errors');
 const autoMod = require('../../security/autoMod');
+const { Configuration } = require('../../database/models');
+const { DEFAULT_CONFIG } = require('../../config/defaults');
 const { TICKET_TYPES, PRIORITIES } = require('../../config/server');
 const { MOD_ACTIONS } = require('../../config');
 const { EMOJIS } = require('../../config/branding');
 const { safeReply } = require('../../utils/discord');
 const { keyValueBlock, truncate } = require('../../utils/formatters');
 
-/** Sections that `/config view` and `/config reset` understand. */
+/** Sections that `/config view` and `/config apply section:` understand. */
 const SECTIONS = [
   'brand', 'theme', 'tickets', 'business', 'reviews', 'portfolio', 'promotion',
   'queue', 'welcome', 'verify', 'referrals', 'autoRoles', 'moderation', 'automod',
@@ -73,14 +75,32 @@ module.exports = {
         .setDescription('Which section to display.')
         .addChoices(...SECTIONS.map((section) => ({ name: section, value: section })))))
 
+    // ── Bulk apply ──────────────────────────────────────────────────────────
     .addSubcommand((sub) => sub
-      .setName('reset')
-      .setDescription('Reset a configuration section to its shipped defaults.')
+      .setName('apply')
+      .setDescription('Configure everything at once, or reset one section, to the shipped defaults.')
       .addStringOption((option) => option
         .setName('section')
-        .setDescription('Section to reset.')
-        .setRequired(true)
-        .addChoices(...SECTIONS.map((section) => ({ name: section, value: section })))))
+        .setDescription('Reset just this one section instead of configuring everything.')
+        .addChoices(...SECTIONS.map((section) => ({ name: section, value: section }))))
+      .addStringOption((option) => option
+        .setName('timezone')
+        .setDescription('IANA timezone for your office hours. Default America/New_York.'))
+      .addStringOption((option) => option
+        .setName('open')
+        .setDescription('Opening time, 24-hour HH:MM. Default 12:00.'))
+      .addStringOption((option) => option
+        .setName('close')
+        .setDescription('Closing time, 24-hour HH:MM. Default 21:00.'))
+      .addStringOption((option) => option
+        .setName('days')
+        .setDescription('Open days as numbers, 0 = Sunday. Default 0,1,2,3,4,5,6.'))
+      .addBooleanOption((option) => option
+        .setName('schedule-only')
+        .setDescription('Only set the hours and status mode, leaving every other setting alone.'))
+      .addBooleanOption((option) => option
+        .setName('preview')
+        .setDescription('Show what would change without saving anything.')))
 
     // ── Brand ───────────────────────────────────────────────────────────────
     .addSubcommand((sub) => sub
@@ -498,16 +518,114 @@ module.exports = {
         }, { ephemeral: true });
       }
 
-      case 'reset': {
+      // ── Bulk apply ────────────────────────────────────────────────────────
+      case 'apply': {
+        const scheduleOnly = interaction.options.getBoolean('schedule-only') ?? false;
+        const preview = interaction.options.getBoolean('preview') ?? false;
         const section = interaction.options.getString('section');
-        const updated = await configService.update(guild, (cfg) => {
-          if (!cfg.resetSection(section)) throw new errors.ValidationError(`\`${section}\` is not a resettable section.`);
+
+        // Naming one section narrows this to what /config reset used to do.
+        // The two were the same operation at different scopes, and /config was
+        // already at Discord's 25-subcommand ceiling.
+        if (section) {
+          if (configService.PRESERVED.includes(section)) {
+            throw new errors.ValidationError(
+              `\`${section}\` holds the wiring \`/setup\` created — channel and role ids, published panel `
+              + 'messages. Resetting it would orphan the server. Re-run `/setup` if you need it rebuilt.',
+            );
+          }
+
+          const updated = await configService.update(guild, (cfg) => {
+            if (!cfg.resetSection(section)) throw new errors.ValidationError(`\`${section}\` is not a resettable section.`);
+            // The verification gate's role id lives in the preserved wiring, so
+            // put it back rather than leave the gate unable to grant anything.
+            if (section === 'verify' && cfg.roles?.verified) cfg.setPath('verify.roleId', cfg.roles.verified);
+          });
+
+          return safeReply(interaction, {
+            embeds: [embeds.success({
+              config: updated,
+              title: 'Section Reset',
+              description: `\`${section}\` has been restored to its shipped defaults.`,
+            })],
+          }, { ephemeral: true });
+        }
+
+        // Validate every input before touching the document, so a typo cannot
+        // leave it half-applied.
+        const timezone = validators.timezone(interaction.options.getString('timezone') ?? DEFAULT_CONFIG.business.timezone);
+        const open = validators.timeOfDay(interaction.options.getString('open') ?? '12:00');
+        const close = validators.timeOfDay(interaction.options.getString('close') ?? '21:00');
+
+        const days = (interaction.options.getString('days') ?? '0,1,2,3,4,5,6')
+          .split(',')
+          .map((value) => Number(value.trim()))
+          .filter((value) => Number.isInteger(value) && value >= 0 && value <= 6);
+
+        if (!days.length) {
+          throw new errors.ValidationError(
+            'No valid days given. Use numbers separated by commas, where 0 is Sunday — for example `1,2,3,4,5` for weekdays.',
+          );
+        }
+
+        const hours = {};
+        for (let day = 0; day <= 6; day += 1) hours[day] = days.includes(day) ? { open, close } : null;
+
+        const time = (value) => businessService.formatTime(businessService.toMinutes(value));
+        const outOfHoursMessage =
+          `We are currently outside office hours (${time(open)} – ${time(close)}, `
+          + `${days.length === 7 ? 'daily' : 'on our open days'}). `
+          + 'Your ticket is logged and will be answered when we reopen.';
+
+        // A preview must not persist, so it runs against a throwaway copy.
+        const stored = await configService.get(guild, { fresh: true });
+        // A preview must not persist, so it runs against a detached copy of the
+        // document rather than the cached one every other command is holding.
+        const target = preview
+          ? new Configuration(stored.toObject({ depopulate: true }))
+          : stored;
+
+        const { changed } = configService.applyProfile(target, {
+          timezone, hours, outOfHoursMessage, scheduleOnly,
         });
+
+        if (!preview && changed.length) {
+          await target.save();
+          configService.invalidate(guild.id);
+        }
+
+        const fresh = preview ? config : await configService.get(guild, { fresh: true });
+        const availability = businessService.availability(target);
+
         return safeReply(interaction, {
-          embeds: [embeds.success({
-            config: updated,
-            title: 'Section Reset',
-            description: `\`${section}\` has been restored to its shipped defaults.`,
+          embeds: [embeds[preview ? 'info' : 'success']({
+            config: fresh,
+            title: preview ? 'Preview — nothing saved' : 'Configuration Applied',
+            description: changed.length
+              ? `${preview ? 'Would update' : 'Updated'} **${changed.length}** section${changed.length === 1 ? '' : 's'}.`
+                + (scheduleOnly ? '' : ' Everything not listed as preserved is now on the shipped studio profile.')
+              : 'Everything was already correct — nothing needed changing.',
+            fields: [
+              {
+                name: 'Office hours',
+                value:
+                  `${time(open)} – ${time(close)} ${days.length === 7 ? 'every day' : `on ${days.map((day) => businessService.DAY_NAMES[day].slice(0, 3)).join(', ')}`}\n`
+                  + `Timezone \`${timezone}\`\n`
+                  + `Right now: **${availability.open ? 'open' : 'closed'}** · status shows **${businessService.effectiveStatus(target)}**`,
+              },
+              ...(changed.length
+                ? [{ name: 'Sections', value: changed.map((section) => `\`${section}\``).join(' ') }]
+                : []),
+              {
+                name: 'Preserved',
+                value:
+                  `${configService.PRESERVED.map((section) => `\`${section}\``).join(' ')}\n`
+                  + '_Your channels, roles and published panels are never touched by this._',
+              },
+              ...(preview || !changed.length
+                ? []
+                : [{ name: 'Next', value: 'Run `/panel republish confirm:True` to repost the panels with the new settings.' }]),
+            ],
           })],
         }, { ephemeral: true });
       }

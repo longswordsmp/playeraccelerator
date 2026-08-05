@@ -254,7 +254,7 @@ Then assign your team the staff roles that were created.
 | Command | Access | Purpose |
 |---|---|---|
 | `/setup` | Server owner | Build the entire server from the blueprint |
-| `/config` | Admin | 23 subcommands covering every runtime setting |
+| `/config` | Admin | 25 subcommands covering every runtime setting; `/config apply` does the lot in one |
 | `/panel` | Admin | Publish, refresh, relocate or republish any public panel |
 | `/members` | Admin | Bulk-grant or bulk-remove a role across everyone already in the server |
 | `/backup` | Admin | Create, list, restore and delete structure snapshots |
@@ -333,7 +333,8 @@ change behaviour.
 /config antiraid join-threshold:10 join-window:15 auto-lockdown:true
 /config antinuke punishment:strip attempt-restore:true
 /config channel log:security destination:#security-logs
-/config reset section:automod             back to shipped defaults
+/config apply section:automod            back to shipped defaults
+/config apply                            every section to shipped defaults, wiring preserved
 ```
 
 Files under `src/config/` hold the shipped defaults and are the right place for
@@ -403,22 +404,48 @@ The developer status has three modes:
 always says which mode is in force, because a pinned status nobody remembers
 pinning is the usual reason a status board goes stale.
 
-To change the schedule on a server that is already set up:
+### Configuring everything at once
+
+Rather than working through two dozen `/config` subcommands by hand, one command
+applies the whole studio profile:
+
+```
+/config apply
+/config apply timezone:Europe/London open:10:00 close:18:00
+/config apply days:1,2,3,4,5 preview:True     show the plan, save nothing
+/config apply schedule-only:True              hours and status mode only
+/config apply section:automod                 reset one section
+```
+
+The same thing from the terminal, for a server the bot is not currently running
+in:
 
 ```bash
-npm run configure                                                   # 12 PM - 9 PM Eastern, daily
+npm run configure
+npm run configure -- --dry-run
 npm run configure -- --timezone=Europe/London --open=10:00 --close=18:00
-npm run configure -- --days=1,2,3,4,5 --dry-run                     # weekdays only, preview
+npm run configure -- --days=1,2,3,4,5 --schedule-only
 ```
+
+Both share one implementation (`configService.applyProfile`) so they cannot
+drift apart.
 
 This exists because editing `defaults.js` is not enough on its own: configuration
 documents are deep-merged with the *stored* values winning, so anything a guild
-has already written keeps winning. Defaults fix new installs; this fixes existing
-ones. It is idempotent and reports what it changed.
+has already written — a timezone saved as `UTC` by the first `/setup`, a brand
+name from before a rename — keeps winning forever. Defaults fix new installs;
+this fixes existing ones. It is idempotent and reports every section it changed.
 
-Individual days can also be set from Discord with `/config hours day:Monday
-open:12:00 close:21:00`, and the timezone with `/config business
-timezone:America/New_York`.
+**What it never touches:** `roles`, `channels`, `categories`, `logChannels`,
+`panels` and `setup` are the wiring `/setup` produced — resetting them would
+orphan the server, because the bot would no longer know which channel is which.
+A running `launch` promotion is preserved for the same reason: closing a publicly
+announced offer as a side effect of a config tidy-up would be worse than leaving
+it slightly stale. A regression test pins this.
+
+Individual settings are still available one at a time — `/config hours
+day:Monday open:12:00 close:21:00`, `/config business
+timezone:America/New_York`, and so on.
 
 ---
 

@@ -174,3 +174,4 @@ configurationSchema.methods.resetSection = function resetSection(section) {
 
 module.exports = model('Configuration', configurationSchema);
 module.exports.deepMerge = deepMerge;
+module.exports.clone = clone;

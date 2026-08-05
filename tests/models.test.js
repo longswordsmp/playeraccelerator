@@ -428,3 +428,117 @@ test('counters are namespaced per guild and sequence', () => {
   assert.equal(query.getFilter()._id, `${GUILD}:ticket`);
   assert.notEqual(`${GUILD}:ticket`, `${GUILD}:order`, 'sequences do not collide');
 });
+
+// ── Bulk configuration (scripts/configure.js) ────────────────────────────────
+
+test('applying the studio profile never clobbers the server wiring', () => {
+  const { applyProfile, PRESERVED } = require('../src/services/configService');
+  const Configuration = require('../src/database/models/Configuration');
+
+  // A guild that has drifted: an old brand name, the wrong timezone, and a full
+  // set of wiring that /setup produced and must survive untouched.
+  const wiring = {
+    roles: { verified: '900000000000000001', customer: '900000000000000002' },
+    channels: { createTicket: '900000000000000010', rules: '900000000000000011' },
+    categories: { tickets: '900000000000000020' },
+    logChannels: { audit: '900000000000000030' },
+    panels: { ticket: { channelId: '900000000000000010', messageId: '900000000000000040' } },
+    setup: { completed: true, completedAt: new Date('2026-01-01T00:00:00Z'), completedBy: 'x', version: 3 },
+    launch: { enabled: true, endsAt: new Date('2099-01-01T00:00:00Z'), claimedSlots: 4, maxSlots: 10 },
+  };
+
+  const doc = new Configuration({
+    guildId: GUILD,
+    guildName: 'Test Guild',
+    ...wiring,
+    brand: { name: 'Player Accelerator', tagline: 'old' },
+    business: { timezone: 'UTC', currencySymbol: '£' },
+    status: { current: 'offline', auto: false },
+    automod: { enabled: false, modules: { spam: { enabled: false } } },
+  });
+
+  const hours = Object.fromEntries([0, 1, 2, 3, 4, 5, 6].map((d) => [d, { open: '12:00', close: '21:00' }]));
+  applyProfile(doc, { timezone: 'America/New_York', hours, outOfHoursMessage: 'closed' });
+
+  // Every preserved section must come back byte-identical.
+  for (const section of PRESERVED) {
+    assert.deepEqual(
+      JSON.parse(JSON.stringify(doc[section])),
+      JSON.parse(JSON.stringify(wiring[section])),
+      `${section} was modified — that would orphan the server`,
+    );
+  }
+
+  // The launch promotion in particular must still be running.
+  assert.equal(doc.launch.enabled, true);
+  assert.equal(doc.launch.claimedSlots, 4);
+
+  // And the drifted settings must have been brought back.
+  assert.equal(doc.brand.name, 'SamotWorks');
+  assert.equal(doc.business.timezone, 'America/New_York');
+  assert.equal(doc.business.currencySymbol, '$', 'reset to the shipped default');
+  assert.equal(doc.status.auto, true);
+  assert.equal(doc.status.autoFromHours, true);
+  assert.equal(doc.automod.enabled, true, 'automod restored');
+  assert.equal(doc.automod.modules.spam.enabled, true);
+  assert.deepEqual(doc.business.hours[3], { open: '12:00', close: '21:00' });
+});
+
+test('applying the profile restores the verification role from the preserved wiring', () => {
+  const { applyProfile } = require('../src/services/configService');
+  const Configuration = require('../src/database/models/Configuration');
+
+  // Resetting `verify` blanks roleId; the id lives in `roles`, which is
+  // preserved. Without step 3 of applyProfile the gate would have nothing to
+  // grant and every verify press would fail.
+  const doc = new Configuration({
+    guildId: GUILD,
+    roles: { verified: '900000000000000001' },
+    verify: { enabled: true, roleId: '900000000000000001' },
+  });
+
+  const hours = Object.fromEntries([0, 1, 2, 3, 4, 5, 6].map((d) => [d, { open: '12:00', close: '21:00' }]));
+  applyProfile(doc, { timezone: 'UTC', hours, outOfHoursMessage: 'closed' });
+
+  assert.equal(doc.verify.roleId, '900000000000000001');
+  assert.equal(doc.verify.enabled, true);
+});
+
+test('schedule-only mode leaves every other section alone', () => {
+  const { applyProfile } = require('../src/services/configService');
+  const Configuration = require('../src/database/models/Configuration');
+
+  const doc = new Configuration({
+    guildId: GUILD,
+    brand: { name: 'Something Custom' },
+    tickets: { maxOpenPerUser: 11 },
+    business: { timezone: 'UTC' },
+  });
+
+  const hours = Object.fromEntries([0, 1, 2, 3, 4, 5, 6].map((d) => [d, { open: '09:00', close: '17:00' }]));
+  const { changed } = applyProfile(doc, {
+    timezone: 'Europe/London', hours, outOfHoursMessage: 'closed', scheduleOnly: true,
+  });
+
+  assert.equal(doc.brand.name, 'Something Custom', 'untouched in schedule-only mode');
+  assert.equal(doc.tickets.maxOpenPerUser, 11);
+  assert.equal(doc.business.timezone, 'Europe/London');
+  // `status` is absent from the fixture, so Mongoose filled it from the shipped
+  // defaults — which already say auto. Writing the same values back is not a
+  // change, and the report must not claim one.
+  assert.deepEqual(changed, ['business']);
+});
+
+test('applying the profile twice changes nothing the second time', () => {
+  const { applyProfile } = require('../src/services/configService');
+  const Configuration = require('../src/database/models/Configuration');
+
+  const doc = new Configuration({ guildId: GUILD, business: { timezone: 'UTC' } });
+  const hours = Object.fromEntries([0, 1, 2, 3, 4, 5, 6].map((d) => [d, { open: '12:00', close: '21:00' }]));
+  const profile = { timezone: 'America/New_York', hours, outOfHoursMessage: 'closed' };
+
+  applyProfile(doc, profile);
+  const { changed } = applyProfile(doc, profile);
+
+  assert.deepEqual(changed, [], 'the script must be safe to run repeatedly');
+});
