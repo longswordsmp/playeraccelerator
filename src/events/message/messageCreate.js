@@ -13,6 +13,7 @@ const { Events } = require('discord.js');
 const configService = require('../../services/configService');
 const ticketService = require('../../services/ticketService');
 const autoMod = require('../../security/autoMod');
+const aiService = require('../../services/aiService');
 const { GuildStats, User } = require('../../database/models');
 const { logger } = require('../../utils/logger');
 
@@ -72,6 +73,15 @@ module.exports = {
       await ticketService.trackMessage(message, config).catch((err) => {
         log.debug('Ticket tracking failed', { message: err.message });
       });
+
+      // Automated first-line support. Deliberately not awaited: it waits before
+      // answering so a human can get there first, and the message hot path must
+      // never block on a model round trip.
+      if (aiService.isConfigured()) {
+        aiService.consider(message, config).catch((err) => {
+          log.debug('AI consideration failed', { message: err.message });
+        });
+      }
     }
 
     // ── Lightweight activity tracking ───────────────────────────────────────

@@ -882,3 +882,157 @@ test('tickets are recognised so AutoMod can stand down inside them', () => {
   assert.equal(autoMod.TICKET_SAFE_MODULES.has('phishingLinks'), true);
   assert.equal(autoMod.TICKET_SAFE_MODULES.has('tokenGrabbers'), true);
 });
+
+// ── Automated ticket support ─────────────────────────────────────────────────
+
+const aiService = require('../src/services/aiService');
+
+test('a reply that mentions money is caught, whatever shape it takes', () => {
+  // This is the guarantee, not the system prompt. A model told not to quote
+  // will still occasionally quote; a customer given a number by a machine will
+  // hold the studio to it, and would be right to.
+  for (const quoted of [
+    'That would be about $150.',
+    'Around 200 USD for a plugin like that.',
+    'It costs 50 to build.',
+    'The price is 80 euros.',
+    'We charge 40 per hour.',
+    'Roughly £120 depending on scope.',
+    'That would be 30 bucks.',
+    'I can do it for 25 per project.',
+    'This one is free of charge.',
+    'Plugins are pretty cheap to build.',
+    'That is quite expensive, honestly.',
+    'I could offer a discount on that.',
+    'Our rate is 60.',
+  ]) {
+    assert.equal(aiService.mentionsMoney(quoted), true, `should have been caught: "${quoted}"`);
+  }
+});
+
+test('ordinary support answers are not mistaken for quotes', () => {
+  for (const safe of [
+    'Yes, that is the kind of plugin the studio builds. The developer will confirm the specifics.',
+    'The studio is closed right now and reopens Monday at 12:00 PM. Hold tight and you will get a reply then.',
+    'Could you say a bit more about how many players your server usually has?',
+    'The developer will read your brief and send you a quote.',
+    'That sounds like a Discord bot rather than a plugin, but both are in scope.',
+    'You can track your project position with /queue.',
+    'I have logged this — someone will be with you shortly.',
+    'Version 1.20 is supported, yes.',
+    'It usually takes 3 messages to pin down a brief.',
+  ]) {
+    assert.equal(aiService.mentionsMoney(safe), false, `should have been allowed: "${safe}"`);
+  }
+});
+
+test('the assistant stays quiet unless it is genuinely covering', () => {
+  const ticket = { userId: 'customer', status: 'open', aiReplies: 0 };
+  const config = { ai: { enabled: true } };
+  const from = (id) => ({ author: { id } });
+
+  // Without a key nothing runs at all, so assert the shape of the refusal
+  // rather than the outcome, which depends on the environment.
+  const verdict = aiService.shouldReply({ message: from('customer'), ticket, config });
+  assert.equal(typeof verdict.ok, 'boolean');
+  assert.equal(typeof verdict.reason === 'string' || verdict.ok, true);
+
+  // These refusals hold regardless of the key.
+  assert.equal(
+    aiService.shouldReply({ message: from('staff'), ticket, config }).reason,
+    aiService.isConfigured() ? 'not the ticket opener' : 'no API key configured',
+  );
+  assert.equal(
+    aiService.shouldReply({ message: from('customer'), ticket, config: { ai: { enabled: false } } }).ok,
+    false,
+  );
+  assert.equal(
+    aiService.shouldReply({ message: from('customer'), ticket: { ...ticket, aiDisabled: true }, config }).ok,
+    false,
+  );
+  assert.equal(
+    aiService.shouldReply({ message: from('customer'), ticket: { ...ticket, status: 'closed' }, config }).ok,
+    false,
+  );
+  assert.equal(
+    aiService.shouldReply({ message: from('customer'), ticket: { ...ticket, aiReplies: 6 }, config }).ok,
+    false,
+  );
+});
+
+test('a human speaking in the ticket stands the assistant down', () => {
+  const { Collection } = require('discord.js');
+  const at = Date.now();
+  const message = (id, authorId, offset, bot = false) => [id, {
+    id, createdTimestamp: at + offset, author: { id: authorId, bot },
+  }];
+
+  const withStaff = new Collection([
+    message('1', 'customer', 0),
+    message('2', 'staff', 100),
+  ]);
+  assert.equal(aiService.humanRepliedSince(withStaff, at, 'customer', 'bot'), true);
+
+  // The bot's own replies and other bots must not count as a human arriving.
+  const withoutStaff = new Collection([
+    message('1', 'customer', 0),
+    message('2', 'bot', 100),
+    message('3', 'otherbot', 150, true),
+  ]);
+  assert.equal(aiService.humanRepliedSince(withoutStaff, at, 'customer', 'bot'), false);
+
+  // A staff message from *before* the customer asked is not an answer to it.
+  const staffEarlier = new Collection([
+    message('0', 'staff', -5000),
+    message('1', 'customer', 0),
+  ]);
+  assert.equal(aiService.humanRepliedSince(staffEarlier, at, 'customer', 'bot'), false);
+});
+
+test('history becomes a valid alternating conversation', () => {
+  const { Collection } = require('discord.js');
+  const message = (id, authorId, content, offset) => [id, {
+    id, content, createdTimestamp: 1000 + offset, author: { id: authorId }, embeds: [],
+  }];
+
+  // Deliberately out of order, and starting with a non-customer turn.
+  const history = new Collection([
+    message('3', 'customer', 'and it needs a config file', 30),
+    message('1', 'bot', 'Ticket opened', 0),
+    message('2', 'customer', 'I need a plugin', 10),
+    message('4', 'staff', 'on it', 40),
+  ]);
+
+  const messages = aiService.toMessages(history, 'customer', 'bot');
+
+  // Must begin with a user turn — the API rejects anything else.
+  assert.equal(messages[0].role, 'user');
+  // Consecutive same-role messages must be merged, not sent as duplicates.
+  for (let i = 1; i < messages.length; i += 1) {
+    assert.notEqual(messages[i].role, messages[i - 1].role, 'roles must alternate');
+  }
+  assert.match(messages[0].content, /I need a plugin/);
+  assert.match(messages[0].content, /config file/);
+  // A staff turn is marked so the model can tell it from its own earlier reply.
+  assert.match(messages[messages.length - 1].content, /\[staff\]/);
+});
+
+test('the system prompt is built from the studio\'s own configuration', () => {
+  const { DEFAULT_CONFIG } = require('../src/config/defaults');
+  const prompt = aiService.buildSystemPrompt({
+    ...DEFAULT_CONFIG,
+    brand: { name: 'TestStudio' },
+  });
+
+  assert.match(prompt, /TestStudio/);
+  assert.match(prompt, /NEVER state, estimate, imply or range a price/);
+  assert.match(prompt, /NEVER commit to a deadline/);
+  assert.match(prompt, /YOU ARE NOT THE DEVELOPER/);
+  // Prompt-injection resistance is stated explicitly, since a customer asking
+  // it to "ignore previous instructions" is a matter of when, not if.
+  assert.match(prompt, /claims to be staff/);
+  // Services and FAQ come from config, so it cannot describe a studio that
+  // does not exist.
+  assert.match(prompt, /Minecraft Plugin Development/);
+  assert.match(prompt, /America\/New_York/);
+});

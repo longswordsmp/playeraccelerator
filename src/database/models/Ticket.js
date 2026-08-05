@@ -28,6 +28,10 @@ const ticketSchema = new Schema(
     /** Sequential, human-quotable number: "Ticket #0042". */
     number: { type: Number, required: true },
     channelId: { type: String, default: '', index: true },
+
+    /** Automated support: opted out for this ticket, and replies used so far. */
+    aiDisabled: { type: Boolean, default: false },
+    aiReplies: { type: Number, default: 0 },
     /** Retained after the channel is deleted, for transcript lookups. */
     channelName: { type: String, default: '' },
     panelMessageId: { type: String, default: '' },

@@ -22,6 +22,7 @@ is implemented and wired to the database.
 - [Configuration](#configuration)
 - [Branding and artwork](#branding-and-artwork)
 - [Office hours and status](#office-hours-and-status)
+- [Automated ticket support](#automated-ticket-support)
 - [Launch promotion](#launch-promotion)
 - [Architecture](#architecture)
 - [Deployment](#deployment)
@@ -289,6 +290,7 @@ Then assign your team the staff roles that were created.
 | `/promotion` | Support | Review partnership applications |
 | `/announcement` | Manager | Seven branded announcement types |
 | `/launch` | Admin | Run the opening promotion: free commissions for a fixed window |
+| `/ai` | Support (settings: Admin) | Automated first-line ticket support: status, per-ticket on/off, settings |
 | `/invites` | Everyone | Referral progress, personal invite link, leaderboard |
 
 ### Moderation
@@ -447,6 +449,47 @@ it slightly stale. A regression test pins this.
 Individual settings are still available one at a time — `/config hours
 day:Monday open:12:00 close:21:00`, `/config business
 timezone:America/New_York`, and so on.
+
+---
+
+## Automated ticket support
+
+A customer who writes at 2 AM gets an acknowledgement, an answer to anything
+already covered by the FAQ, and an honest statement of when a human will reply —
+instead of silence until morning.
+
+Set `AI_API_KEY` in the environment ([console.anthropic.com](https://console.anthropic.com)
+→ API Keys). Without one the feature is completely inert: no replies, no errors,
+no cost.
+
+```
+/ai status                        is it on, and what will it do
+/ai off                           silence it in this ticket — you are handling it
+/ai on                            allow it here again
+/ai settings only-when-closed:True delay:60 max-replies:4
+```
+
+**What it will never do**, in decreasing order of how much the guarantee is
+worth:
+
+| | Enforced by |
+| --- | --- |
+| Quote, estimate or range a price | A reply mentioning money is **discarded, not sent** |
+| Claim to be you | Every reply is labelled "Automated reply" in the embed |
+| Commit to deadlines or agree to terms | System prompt |
+| Speak after a human has replied | Re-checked at the end of the delay, not the start |
+
+The money filter is the important one. Prompt instructions are a request; a
+filter on the way out is a guarantee. A customer quoted a number by a machine
+will hold the studio to it, and would be right to — so a reply that mentions
+money is dropped and a human answers instead. Thirteen phrasings are covered by
+tests, including spelled-out amounts and "cheap", "discount" and "free of
+charge".
+
+Everything factual in the prompt — services, office hours, FAQ — is read from
+the guild's own configuration, so the assistant cannot describe a studio that
+does not exist. It also declines instructions to ignore its rules or claims to
+be staff: anyone genuinely on the team can act in the ticket themselves.
 
 ---
 

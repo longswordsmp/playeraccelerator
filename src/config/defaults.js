@@ -290,6 +290,31 @@ const DEFAULT_CONFIG = {
     announcementMessageId: '',
   },
 
+  /**
+   * Automated first-line support inside tickets.
+   *
+   * Covers the gap between a customer writing at 2 AM and a human reading it.
+   * It never quotes, never commits to a deadline, and stands down the moment a
+   * person replies in the ticket. Requires AI_API_KEY; without one every option
+   * here is ignored.
+   */
+  ai: {
+    enabled: true,
+    /** Override the model. Empty uses AI_MODEL, then the shipped default. */
+    model: '',
+    /**
+     * Seconds to wait before answering, so a human who is present gets there
+     * first. Re-checked at the end of the wait, not the start.
+     */
+    replyDelaySeconds: 45,
+    /** Only step in outside office hours. */
+    onlyWhenClosed: false,
+    /** Automated replies allowed per ticket. 0 = unlimited. */
+    maxRepliesPerTicket: 6,
+    /** How many recent messages to send as context. */
+    contextMessages: 12,
+  },
+
   welcome: {
     enabled: true,
     /** Post the welcome embed in the welcome channel. */

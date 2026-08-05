@@ -61,6 +61,20 @@ const env = Object.freeze({
   logDir: resolvePath(process.env.LOG_DIR, 'logs'),
   transcriptBaseUrl: (process.env.TRANSCRIPT_BASE_URL || '').replace(/\/+$/, ''),
 
+  /**
+   * Automated first-line ticket support. Inert without a key — every code path
+   * checks `isConfigured()` first, so an unset key disables the feature rather
+   * than erroring.
+   */
+  ai: {
+    key: process.env.AI_API_KEY?.trim() || '',
+    model: process.env.AI_MODEL?.trim() || '',
+    baseUrl: process.env.AI_BASE_URL?.trim() || '',
+    get enabled() {
+      return Boolean(this.key);
+    },
+  },
+
   // Optional integrations
   imageModeration: {
     url: process.env.IMAGE_MODERATION_API_URL?.trim() || '',

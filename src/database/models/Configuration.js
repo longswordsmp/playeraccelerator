@@ -90,6 +90,7 @@ const configurationSchema = new Schema(
     verify: { type: Schema.Types.Mixed, default: () => clone(DEFAULT_CONFIG.verify) },
     referrals: { type: Schema.Types.Mixed, default: () => clone(DEFAULT_CONFIG.referrals) },
     launch: { type: Schema.Types.Mixed, default: () => clone(DEFAULT_CONFIG.launch) },
+    ai: { type: Schema.Types.Mixed, default: () => clone(DEFAULT_CONFIG.ai) },
 
     moderation: { type: Schema.Types.Mixed, default: () => clone(DEFAULT_CONFIG.moderation) },
     automod: { type: Schema.Types.Mixed, default: () => clone(DEFAULT_CONFIG.automod) },
