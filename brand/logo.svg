@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!--
+    Samotworks mark.
+
+    An angle bracket resolving into a forward slash — the two characters every
+    developer types most. Read together they form a stylised "S" negative space
+    and suggest forward motion. Deliberately geometric so it stays legible at
+    32px in a Discord member list.
+  -->
+  <defs>
+    <linearGradient id="brand" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#818cf8"/>
+      <stop offset="55%" stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#a855f7"/>
+    </linearGradient>
+    <!--
+      The surface never darkens to the canvas colour. An earlier version ended
+      on #0f1117 — identical to the backdrop — which made the lower edge of the
+      card dissolve and read as a clipped image.
+    -->
+    <linearGradient id="surface" x1="0" y1="0" x2="0.35" y2="1">
+      <stop offset="0%" stop-color="#242840"/>
+      <stop offset="100%" stop-color="#141721"/>
+    </linearGradient>
+    <radialGradient id="halo" cx="0.5" cy="0.45" r="0.6">
+      <stop offset="0%" stop-color="#6366f1" stop-opacity="0.20"/>
+      <stop offset="100%" stop-color="#6366f1" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="14" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!--
+    Full-bleed surface. Discord crops avatars to a circle and rounds embed
+    thumbnails itself, so the artwork carries no card edge of its own — there is
+    no border to get clipped, and it reads correctly in every shape Discord
+    applies.
+  -->
+  <rect width="512" height="512" fill="url(#surface)"/>
+  <rect width="512" height="512" fill="url(#halo)"/>
+
+  <g filter="url(#glow)">
+    <!-- Opening bracket -->
+    <path d="M196 150 L118 256 L196 362"
+          fill="none" stroke="url(#brand)" stroke-width="34"
+          stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- Forward slash -->
+    <path d="M300 142 L232 370"
+          fill="none" stroke="url(#brand)" stroke-width="34"
+          stroke-linecap="round"/>
+    <!-- Closing bracket -->
+    <path d="M336 150 L414 256 L336 362"
+          fill="none" stroke="url(#brand)" stroke-width="34"
+          stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>

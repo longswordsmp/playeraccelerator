@@ -77,7 +77,7 @@ async function pricingPanel(guild, config) {
 
   const rows = doc.services.map((service) => ({
     name: `${service.emoji} ${service.name}`,
-    value: `${service.from !== null ? `**From ${money(service.from, symbol)}**` : '**Custom quote**'}\n${service.note}`,
+    value: `${service.from !== null ? `**From ${money(service.from, symbol)}**` : '**Quoted per project**'}\n${service.note}`,
     inline: true,
   }));
 
@@ -86,7 +86,13 @@ async function pricingPanel(guild, config) {
       config,
       title: `${EMOJIS.pricing} ${doc.title}`,
       description: doc.intro,
-      fields: [...rows, { name: 'Good to know', value: doc.notes.map((note) => `${EMOJIS.bullet} ${note}`).join('\n') }],
+      fields: [
+        ...rows,
+        ...(doc.factors?.length
+          ? [{ name: 'What affects the price', value: doc.factors.map((factor) => `${EMOJIS.bullet} ${factor}`).join('\n') }]
+          : []),
+        { name: 'Good to know', value: doc.notes.map((note) => `${EMOJIS.bullet} ${note}`).join('\n') },
+      ],
       footer: doc.footer,
     })],
     components: config.channels?.createTicket

@@ -23,3 +23,5 @@ Thumbs.db
 .idea/
 .vscode/
 *.swp
+
+# Brand source artwork is tracked; rendered PNGs are too (they are deliverables)

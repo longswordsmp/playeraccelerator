@@ -185,69 +185,88 @@ const TOS = Object.freeze({
   footer: 'Last reviewed on publication. Questions about these terms are welcome in a support ticket.',
 });
 
+/**
+ * Pricing copy.
+ *
+ * Deliberately quote-based: no published prices. Every project is priced on the
+ * work it actually takes, so a list of numbers would either be wrong or would
+ * anchor a customer to the wrong figure. `from` is kept as `null` on every
+ * service — the renderer prints "Custom quote" for it — so a studio that later
+ * wants published starting prices can add numbers without touching any code.
+ */
 const PRICING = Object.freeze({
-  title: 'Service Pricing',
+  title: 'Pricing & Quotes',
   intro:
-    'Transparent starting prices. Every project receives a written fixed-price quote before any work begins — ' +
-    'no hourly surprises, no hidden fees.',
+    'Every project is priced individually, because no two are the same amount of work. ' +
+    'Tell us what you need and you get a written, fixed-price quote before anything starts — ' +
+    'no hourly meter, no scope creep, no surprises on the invoice.',
   currency: '$',
   services: [
     {
       name: 'Discord Bot Development',
       emoji: '🤖',
-      from: 45,
+      from: null,
       note: 'Slash commands, dashboards, moderation, economy, custom integrations.',
     },
     {
       name: 'Minecraft Plugin Development',
       emoji: '🧩',
-      from: 35,
+      from: null,
       note: 'Spigot, Paper, Velocity and Fabric. Includes config and documentation.',
     },
     {
       name: 'Website Development',
       emoji: '🌐',
-      from: 120,
+      from: null,
       note: 'Landing pages, storefronts, dashboards. Responsive and SEO-ready.',
     },
     {
       name: 'API Development',
       emoji: '🔌',
-      from: 90,
+      from: null,
       note: 'REST and realtime APIs, authentication, documentation, deployment.',
     },
     {
       name: 'Custom Software',
       emoji: '⚙️',
       from: null,
-      note: 'Quoted individually after a short scoping conversation.',
+      note: 'Desktop tools, services and bespoke systems built to specification.',
     },
     {
       name: 'Automation & Tooling',
       emoji: '🔁',
-      from: 30,
+      from: null,
       note: 'Scripts, scrapers, pipelines and internal tooling.',
     },
     {
       name: 'Bug Fixes & Maintenance',
       emoji: '🐞',
-      from: 15,
-      note: 'Diagnosis included. Fixed-price once the cause is identified.',
+      from: null,
+      note: 'Diagnosis included. Priced once the cause is actually understood.',
     },
     {
       name: 'Code Review & Consulting',
       emoji: '🔍',
-      from: 25,
+      from: null,
       note: 'Architecture review, security review, written recommendations.',
     },
   ],
-  notes: [
-    'Prices shown are starting points and scale with scope and complexity.',
-    'A 50% deposit secures your slot in the queue; the balance is due on delivery.',
-    'Rush delivery is available for a surcharge, subject to capacity.',
-    'Long-term retainers and maintenance contracts receive discounted rates.',
+  /** What actually moves the number — set expectations without naming one. */
+  factors: [
+    'How much has to be built from scratch versus assembled from known parts',
+    'How many moving pieces have to talk to each other reliably',
+    'Whether it needs a database, hosting, or a dashboard alongside it',
+    'How much edge-case handling and testing the job genuinely warrants',
+    'How soon you need it — rush work displaces other scheduled projects',
   ],
-  footer: 'All quotes are fixed-price and valid for 14 days.',
+  notes: [
+    'Quotes are free. Describing your project costs you nothing and commits you to nothing.',
+    'The quote is fixed. Once agreed, the price does not move unless you change the scope.',
+    'A deposit secures your slot in the queue; the balance is due on delivery.',
+    'Small fixes are often cheaper than you expect — ask before assuming.',
+    'Ongoing maintenance and retainers are arranged separately at a reduced rate.',
+  ],
+  footer: 'Open a ticket for a free, no-obligation quote. Quotes are valid for 14 days.',
 });
 
 const PORTFOLIO = Object.freeze({

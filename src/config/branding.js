@@ -98,16 +98,23 @@ const EMOJIS = Object.freeze({
   forward: '▶',
 });
 
-/** Default brand identity — overridable per guild via `/config brand`. */
+/**
+ * Default brand identity — overridable per guild via `/config brand`.
+ *
+ * `logoUrl` and `bannerUrl` must be publicly reachable HTTPS URLs; Discord
+ * fetches them server-side, so a local file path will not render. The artwork
+ * ships in `brand/` — upload it somewhere public (or post it in a Discord
+ * channel and copy the CDN link) and set the URLs with `/config brand`.
+ */
 const BRAND = Object.freeze({
-  name: 'Player Accelerator',
-  tagline: 'Professional Software Development Studio',
-  shortName: 'Player Accelerator',
-  footer: 'Player Accelerator · Professional Development Services',
+  name: 'Samotworks',
+  tagline: 'Software built properly, priced honestly.',
+  shortName: 'Samotworks',
+  footer: 'Samotworks · Software Development Studio',
   /** Optional absolute URLs — leave empty to omit them from embeds. */
   logoUrl: '',
   bannerUrl: '',
-  websiteUrl: '',
+  websiteUrl: 'https://samotportfolio.netlify.app',
   supportEmail: '',
   /** Divider used between embed sections for a consistent rhythm. */
   divider: '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
