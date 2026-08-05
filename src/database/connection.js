@@ -71,6 +71,17 @@ function bindEvents() {
 }
 
 /**
+ * Does this connection string point at the local machine?
+ *
+ * Deliberately string-based rather than URL-parsed: a Mongo URI can carry a
+ * comma-separated seed list and credentials containing characters that trip
+ * `new URL()`, and a false negative here only costs a hint.
+ */
+function isLocalhostUri(uri) {
+  return /(?:@|\/\/)(?:localhost|127\.0\.0\.1|\[?::1\]?)(?::\d+)?(?:[/?,]|$)/i.test(String(uri ?? ''));
+}
+
+/**
  * Connect to MongoDB, retrying with exponential backoff.
  * @param {{ retries?: number }} [options]
  * @returns {Promise<typeof mongoose>}
@@ -104,6 +115,18 @@ async function connect({ retries = 5 } = {}) {
         lastError = err;
         const delay = Math.min(30_000, 2 ** attempt * 1000);
         log.error(`MongoDB connection failed: ${err.message}`);
+        // The single most common deployment mistake is copying a local
+        // DATABASE_URL onto a host. "ECONNREFUSED 127.0.0.1" is technically
+        // accurate and tells you nothing: inside a container localhost is the
+        // container, so the message names a machine that was never going to
+        // have a database on it. Say what is actually wrong, once.
+        if (attempt === 1 && err.message?.includes('ECONNREFUSED') && isLocalhostUri(env.databaseUrl)) {
+          log.error(
+            'DATABASE_URL points at localhost. If this bot is running on a server, in Docker or on a '
+            + 'platform like Railway, "localhost" means the container itself — not the machine you '
+            + 'copied the URL from. Point it at your hosted database instead.',
+          );
+        }
         if (attempt < retries) {
           log.info(`Retrying in ${Math.round(delay / 1000)}s…`);
           await new Promise((resolve) => setTimeout(resolve, delay));
@@ -155,4 +178,4 @@ function health() {
 /** Whether the database is currently usable. */
 const isReady = () => mongoose.connection.readyState === 1;
 
-module.exports = { connect, disconnect, syncIndexes, health, isReady, mongoose };
+module.exports = { connect, disconnect, syncIndexes, health, isReady, isLocalhostUri, mongoose };

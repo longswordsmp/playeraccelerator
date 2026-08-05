@@ -652,3 +652,33 @@ test('/setup exposes repair as well as rebuild', () => {
   // actually need when the blueprint has gained a channel.
   assert.equal(names[0], 'repair');
 });
+
+// ── Connection string diagnostics ────────────────────────────────────────────
+
+test('a localhost database URL is recognised so the error can explain itself', () => {
+  // Copying a local DATABASE_URL onto a host is the most common deployment
+  // mistake, and "ECONNREFUSED 127.0.0.1" names a machine that was never going
+  // to have a database on it. This is what turns that into a useful message.
+  const { isLocalhostUri } = require('../src/database/connection');
+
+  for (const uri of [
+    'mongodb://localhost:27017/studio',
+    'mongodb://127.0.0.1:27017/studio',
+    'mongodb://user:pw@localhost:27017/studio',
+    'mongodb://localhost/studio',
+    'mongodb://[::1]:27017/studio',
+  ]) {
+    assert.equal(isLocalhostUri(uri), true, uri);
+  }
+
+  for (const uri of [
+    'mongodb://mongo:pw@mongodb.railway.internal:27017/studio',
+    'mongodb+srv://user:pw@cluster0.abcde.mongodb.net/studio',
+    'mongodb://mongo:27017/studio',
+    // A password that merely contains the word must not trigger it.
+    'mongodb://user:localhost@realhost:27017/studio',
+    '',
+  ]) {
+    assert.equal(isLocalhostUri(uri), false, uri);
+  }
+});
