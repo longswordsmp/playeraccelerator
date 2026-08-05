@@ -30,13 +30,24 @@ COPY scripts ./scripts
 # embeds — which is exactly why it would have shipped unnoticed.
 COPY brand ./brand
 
-# Runtime data lives on a volume so transcripts, backups and logs survive a
-# container replacement.
+# Runtime data must outlive the container: transcripts and backups are written
+# to disk and only *referenced* from the database, so losing them orphans every
+# `htmlPath` on a closed ticket.
+#
+# There is deliberately no `VOLUME` instruction here. Railway rejects the whole
+# image if it finds one ("docker VOLUME at Line 35 is not supported, use Railway
+# Volumes"), and it buys nothing anyway: docker-compose.yml names these paths
+# explicitly, and any host that mounts a volume does so by path regardless. The
+# directories still have to exist and be writable by `node`, which is what this
+# does.
+#
+# Wherever you deploy, mount persistent storage over these three paths — or set
+# TRANSCRIPT_DIR, BACKUP_DIR and LOG_DIR to somewhere under a single mount, as
+# Railway requires since it allows only one mount path per service.
 RUN mkdir -p /app/transcripts /app/backups /app/logs \
  && chown -R node:node /app
 
 USER node
-VOLUME ["/app/transcripts", "/app/backups", "/app/logs"]
 
 # A lightweight liveness probe: the process must still be able to require its
 # own entry point. Real health is reported through the bot-logs channel.
