@@ -25,6 +25,10 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY package.json ./
 COPY src ./src
 COPY scripts ./scripts
+# The panel headers are read from disk at startup and uploaded with each panel.
+# Leaving them out does not crash anything — `assets.js` degrades to text-only
+# embeds — which is exactly why it would have shipped unnoticed.
+COPY brand ./brand
 
 # Runtime data lives on a volume so transcripts, backups and logs survive a
 # container replacement.

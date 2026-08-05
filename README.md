@@ -545,17 +545,31 @@ still has to be on.
 
 **Moving to a VPS.** `DATABASE_URL` points at `localhost`, so the database has
 to come too. Either let Docker Compose run MongoDB alongside the bot (below), or
-point `DATABASE_URL` at MongoDB Atlas. To carry existing data across:
+point `DATABASE_URL` at MongoDB Atlas.
+
+Carrying existing data across, on the old machine:
 
 ```bash
-mongodump --uri="mongodb://localhost:27017/player-accelerator" --out=dump
-# copy dump/ to the server, then
-mongorestore --uri="<new DATABASE_URL>" dump/player-accelerator
+mongodump --uri="mongodb://localhost:27017/<your db name>" --out=dump
+```
+
+Then copy `dump/` to the server. Compose does not publish Mongo's port, so
+restore through the container rather than over the network — and remap the
+namespace, because the compose stack names its database `samotworks` while a
+local install is named after whatever is in your `DATABASE_URL`:
+
+```bash
+docker compose cp dump mongo:/dump
+docker compose exec mongo mongorestore \
+  --nsFrom="<your db name>.*" --nsTo="samotworks.*" /dump
+docker compose restart bot
 ```
 
 Worth doing rather than starting fresh: the database holds the channel and role
 ids `/setup` created, every ticket, order and review, and the referral counts.
-Losing it means the bot no longer knows which channel is which.
+Losing it means the bot no longer knows which channel is which, and `/setup
+repair` would adopt the channels by name but every published panel would be
+reposted.
 
 ### Docker (recommended)
 
