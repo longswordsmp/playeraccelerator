@@ -115,10 +115,29 @@ const EMOJIS = Object.freeze({
  * channel and copy the CDN link) and set the URLs with `/config brand`.
  */
 const BRAND = Object.freeze({
-  name: 'Samotworks',
+  name: 'SamotWorks',
+  shortName: 'SamotWorks',
+
+  /**
+   * The Discord server's own name. The suffix says what the place *is* — a
+   * stranger arriving from a server list should not have to open a channel to
+   * find out. Kept under Discord's 100-character guild-name limit.
+   */
+  serverName: 'SamotWorks — Plugin & Software Studio',
+
+  /** Long tagline, used under the wordmark and in embed footers. */
   tagline: 'Software built properly, priced honestly.',
-  shortName: 'Samotworks',
-  footer: 'Samotworks · Software Development Studio',
+  /** Short slogan, used where space is tight (banners, server name suffix). */
+  slogan: 'Built properly. Priced honestly.',
+
+  /**
+   * Server description, shown in Discord Discovery and the server preview.
+   * Discord caps this at 120 characters — this is 118.
+   */
+  description:
+    'Custom Minecraft plugins, Discord bots and web builds. Open a ticket, get a straight quote, watch it get built.',
+
+  footer: 'SamotWorks · Software Development Studio',
   /** Optional absolute URLs — leave empty to omit them from embeds. */
   logoUrl: '',
   bannerUrl: '',

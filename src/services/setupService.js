@@ -25,7 +25,7 @@ const configService = require('./configService');
 const logService = require('./logService');
 const backupService = require('./backupService');
 const embeds = require('../utils/embeds');
-const { EMOJIS, COLORS } = require('../config/branding');
+const { EMOJIS, COLORS, BRAND } = require('../config/branding');
 const { attempt, sleep } = require('../utils/discord');
 const { logger } = require('../utils/logger');
 
@@ -102,7 +102,8 @@ function preflight(guild) {
 
   const required = [
     'ManageChannels', 'ManageRoles', 'ManageGuild', 'ViewChannel',
-    'SendMessages', 'EmbedLinks', 'ManageMessages', 'ReadMessageHistory',
+    // AttachFiles: every published panel uploads its header artwork.
+    'SendMessages', 'EmbedLinks', 'ManageMessages', 'ReadMessageHistory', 'AttachFiles',
   ];
   const missing = required.filter((permission) => !me.permissions.has(PermissionFlagsBits[permission]));
   if (missing.length) {
@@ -434,6 +435,51 @@ async function createChannels(guild, roles, progress) {
  * @param {{ wipe?: boolean, deleteRoles?: boolean, backup?: boolean }} params.options
  * @returns {Promise<object>} a summary of what happened
  */
+/**
+ * Name and describe the server itself.
+ *
+ * The channels can be perfect and the server will still read as somebody's
+ * abandoned test guild if it is called "tomas's server". A description is only
+ * accepted by Discord on Community-enabled guilds, so a failure there is
+ * reported as a note rather than an error.
+ *
+ * @param {import('discord.js').Guild} guild
+ * @param {object} config
+ * @param {SetupProgress} progress
+ * @param {{ rename?: boolean }} options
+ */
+async function applyIdentity(guild, config, progress, options = {}) {
+  if (options.rename === false) return;
+
+  const name = config.brand?.serverName || BRAND.serverName;
+  const description = config.brand?.description || BRAND.description;
+
+  if (!name || guild.name === name) return;
+
+  await progress.step('Naming the server…', 'pending');
+
+  const renamed = await attempt(() => guild.setName(name, 'Studio branding applied by /setup'), {
+    label: 'set guild name',
+  });
+
+  if (!renamed) {
+    progress.warn('I could not rename the server — that needs the **Manage Server** permission.');
+    await progress.step('Server name unchanged', 'warn');
+    return;
+  }
+
+  // Only Community guilds accept a description; anywhere else this is a no-op
+  // and must not be reported as a failure.
+  if (description && guild.features?.includes('COMMUNITY')) {
+    const described = await attempt(() => guild.setDescription(description, 'Studio branding applied by /setup'), {
+      label: 'set guild description',
+    });
+    if (!described) progress.warn('The server description could not be set.');
+  }
+
+  await progress.step(`Server renamed to “${name}”`);
+}
+
 async function run({ interaction, guild, config, options }) {
   const progress = new SetupProgress(interaction, config);
   const startedAt = Date.now();
@@ -458,6 +504,8 @@ async function run({ interaction, guild, config, options }) {
       deleteRoles: options.deleteRoles !== false,
     });
   }
+
+  await applyIdentity(guild, config, progress, options);
 
   const roles = await createRoles(guild, progress);
   const { categories, channels, logChannels, panelTargets } = await createChannels(guild, roles, progress);
@@ -530,4 +578,4 @@ async function run({ interaction, guild, config, options }) {
   return summary;
 }
 
-module.exports = { run, preflight, teardown, createRoles, createChannels, overwritesFor, SetupProgress };
+module.exports = { run, preflight, teardown, applyIdentity, createRoles, createChannels, overwritesFor, SetupProgress };

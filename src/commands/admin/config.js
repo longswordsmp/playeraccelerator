@@ -87,7 +87,10 @@ module.exports = {
       .setName('brand')
       .setDescription('Set the studio name, tagline, footer and imagery.')
       .addStringOption((option) => option.setName('name').setDescription('Studio name shown across every embed.'))
+      .addStringOption((option) => option.setName('server-name').setDescription('Name applied to the Discord server itself by /setup.'))
+      .addStringOption((option) => option.setName('description').setDescription('Server description (Community servers only). Max 120 characters.'))
       .addStringOption((option) => option.setName('tagline').setDescription('Short tagline.'))
+      .addStringOption((option) => option.setName('slogan').setDescription('Very short slogan, for banners and tight spaces.'))
       .addStringOption((option) => option.setName('footer').setDescription('Footer text on every embed.'))
       .addStringOption((option) => option.setName('logo').setDescription('Logo URL (used as the embed thumbnail).'))
       .addStringOption((option) => option.setName('banner').setDescription('Banner URL (used on panels).'))
@@ -513,7 +516,12 @@ module.exports = {
       case 'brand':
         return apply(collect({
           name: str('brand.name', (v) => validators.text(v, 'Name', { max: 80, allowNewlines: false })),
+          // Discord's own limits: 100 characters for a guild name, 120 for the
+          // description. Rejecting here beats a failed API call at /setup time.
+          'server-name': str('brand.serverName', (v) => validators.text(v, 'Server name', { max: 100, allowNewlines: false })),
+          description: str('brand.description', (v) => validators.text(v, 'Description', { max: 120, allowNewlines: false })),
           tagline: str('brand.tagline', (v) => validators.text(v, 'Tagline', { max: 120, allowNewlines: false })),
+          slogan: str('brand.slogan', (v) => validators.text(v, 'Slogan', { max: 80, allowNewlines: false })),
           footer: str('brand.footer', (v) => validators.text(v, 'Footer', { max: 120, allowNewlines: false })),
           logo: str('brand.logoUrl', (v) => validators.url(v, { label: 'Logo' })),
           banner: str('brand.bannerUrl', (v) => validators.url(v, { label: 'Banner' })),

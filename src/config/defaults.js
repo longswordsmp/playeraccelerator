@@ -32,7 +32,12 @@ const DEFAULT_CONFIG = {
   // ── Identity ───────────────────────────────────────────────────────────────
   brand: {
     name: BRAND.name,
+    /** Applied to the guild itself by /setup. */
+    serverName: BRAND.serverName,
+    /** Guild description — only accepted by Discord on Community servers. */
+    description: BRAND.description,
     tagline: BRAND.tagline,
+    slogan: BRAND.slogan,
     footer: BRAND.footer,
     logoUrl: BRAND.logoUrl,
     bannerUrl: BRAND.bannerUrl,
@@ -46,6 +51,12 @@ const DEFAULT_CONFIG = {
     warning: COLORS.warning,
     danger: COLORS.danger,
     info: COLORS.info,
+    /**
+     * Attach the per-panel header artwork from `brand/panels/` to each public
+     * panel. Turn off if you would rather the panels stayed text-only, or if
+     * the extra upload per refresh is unwelcome on a metered host.
+     */
+    panelImages: true,
   },
 
   // ── Wiring produced by /setup ──────────────────────────────────────────────
@@ -241,6 +252,31 @@ const DEFAULT_CONFIG = {
     revokeIfLeaveWithinHours: 24,
     /** Announce when a member unlocks the programme. */
     announceUnlock: true,
+  },
+
+  /**
+   * Time-boxed launch promotion.
+   *
+   * While the window is open the referral gate on the free-commission ticket
+   * type is waived for the listed services, so the offer the announcement makes
+   * and the behaviour of the ticket panel cannot drift apart. `/launch end`
+   * closes it early; the scheduler closes it automatically at `endsAt`.
+   */
+  launch: {
+    enabled: false,
+    startedAt: null,
+    endsAt: null,
+    /** Ticket types the waiver applies to. */
+    serviceTypes: ['minecraft-plugin'],
+    /** Skip the referral requirement for those services while open. */
+    waiveReferralGate: true,
+    /** Cap on free slots accepted during the window. 0 = unlimited. */
+    maxSlots: 0,
+    /** Slots claimed so far, incremented as free tickets open. */
+    claimedSlots: 0,
+    /** Message id of the published announcement, so it can be closed out. */
+    announcementChannelId: '',
+    announcementMessageId: '',
   },
 
   welcome: {

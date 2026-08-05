@@ -42,7 +42,7 @@ const fail = (message, detail) => {
 const section = (title) => process.stdout.write(`\n${title}\n`);
 
 async function main() {
-  process.stdout.write('\n  Player Accelerator — diagnostics\n');
+  process.stdout.write('\n  SamotWorks — diagnostics\n');
 
   // ── Environment ───────────────────────────────────────────────────────────
   section('Environment');

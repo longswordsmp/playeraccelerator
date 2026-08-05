@@ -1,4 +1,4 @@
-# Player Accelerator
+# SamotWorks
 
 A Discord platform for running a software development studio: customer tickets,
 order pipeline, verified reviews, portfolio, promotion partnerships, business
@@ -20,6 +20,8 @@ is implemented and wired to the database.
 - [Running the server setup](#running-the-server-setup)
 - [Command reference](#command-reference)
 - [Configuration](#configuration)
+- [Branding and artwork](#branding-and-artwork)
+- [Launch promotion](#launch-promotion)
 - [Architecture](#architecture)
 - [Deployment](#deployment)
 - [Testing](#testing)
@@ -85,8 +87,8 @@ automatically on join and on first purchase.
 ## Installation
 
 ```bash
-git clone <your-fork-url> player-accelerator
-cd player-accelerator
+git clone <your-fork-url> samotworks
+cd samotworks
 npm install
 
 cp .env.example .env
@@ -160,7 +162,7 @@ exactly what is blocked.
 | `CLIENT_ID` | yes | — | Application ID |
 | `OWNER_ID` | yes | — | Comma-separated owner user IDs, granted full access |
 | `GUILD_ID` | no | — | Register commands to one guild (instant). Empty registers globally (up to 1 hour) |
-| `DATABASE_URL` | yes | `mongodb://127.0.0.1:27017/player-accelerator` | MongoDB connection string |
+| `DATABASE_URL` | yes | `mongodb://127.0.0.1:27017/samotworks` | MongoDB connection string |
 | `DATABASE_NAME` | no | from URI | Override the database name |
 | `NODE_ENV` | no | `production` | `production` skips autoIndex and builds indexes once at boot |
 | `LOG_LEVEL` | no | `info` | `error` \| `warn` \| `info` \| `debug` \| `trace` |
@@ -187,7 +189,7 @@ Nothing to create by hand. Collections and indexes are built on first connect
 
 ```bash
 docker run -d --name mongo -p 27017:27017 -v mongo-data:/data/db mongo:7
-# DATABASE_URL=mongodb://127.0.0.1:27017/player-accelerator
+# DATABASE_URL=mongodb://127.0.0.1:27017/samotworks
 ```
 
 **MongoDB Atlas**
@@ -195,7 +197,7 @@ docker run -d --name mongo -p 27017:27017 -v mongo-data:/data/db mongo:7
 1. Create a free M0 cluster.
 2. Add a database user and allow your server's IP.
 3. Copy the connection string into `DATABASE_URL`, appending the database name:
-   `mongodb+srv://user:pass@cluster.mongodb.net/player-accelerator`
+   `mongodb+srv://user:pass@cluster.mongodb.net/samotworks`
 
 **Collections**
 
@@ -252,7 +254,8 @@ Then assign your team the staff roles that were created.
 |---|---|---|
 | `/setup` | Server owner | Build the entire server from the blueprint |
 | `/config` | Admin | 23 subcommands covering every runtime setting |
-| `/panel` | Admin | Publish, refresh or relocate any public panel |
+| `/panel` | Admin | Publish, refresh, relocate or republish any public panel |
+| `/members` | Admin | Bulk-grant or bulk-remove a role across everyone already in the server |
 | `/backup` | Admin | Create, list, restore and delete structure snapshots |
 
 ### Tickets
@@ -283,6 +286,8 @@ Then assign your team the staff roles that were created.
 | `/portfolio` | Everyone (manage: staff) | Browse, add, edit, feature, remove case studies |
 | `/promotion` | Support | Review partnership applications |
 | `/announcement` | Manager | Seven branded announcement types |
+| `/launch` | Admin | Run the opening promotion: free commissions for a fixed window |
+| `/invites` | Everyone | Referral progress, personal invite link, leaderboard |
 
 ### Moderation
 
@@ -347,6 +352,57 @@ every read, so there is no migration to write.
 
 ---
 
+## Branding and artwork
+
+The visual identity lives in `brand/` and is generated, not hand-drawn in an
+editor, so it can be regenerated at any size and kept consistent:
+
+| File | What it is |
+| --- | --- |
+| `brand/logo.svg` / `.png` | The `< / >` mark, 512² |
+| `brand/bot-avatar.png` | The same mark at 1024², for the application avatar |
+| `brand/banner.svg` / `.png` | Wordmark banner, 1200×400 |
+| `brand/panels/*.png` | One 1200×300 header per public panel |
+
+Regenerate after changing wording, colours or glyphs:
+
+```bash
+npm install --no-save playwright-core
+node scripts/build-panel-art.js     # writes brand/panels/*.svg from the template
+node scripts/render-brand.js        # rasterises every SVG to PNG
+```
+
+Panel headers are uploaded as message attachments rather than hot-linked.
+Discord's CDN links for attachments now carry an expiry signature, so a URL
+captured once and stored in the database would quietly break later. Turn the
+artwork off with `/config theme` if you would rather keep panels text-only.
+
+The studio name, server name, tagline, slogan and description are all set in
+`src/config/branding.js` and overridable per guild with `/config brand`. `/setup`
+applies the server name to the guild itself, and the description too when the
+guild is Community-enabled.
+
+---
+
+## Launch promotion
+
+`/launch start` opens a time-boxed window in which the referral requirement on
+free portfolio commissions is waived, and publishes the announcement in one
+action. This is deliberate: an announcement that says "just open a ticket" while
+the gate still demands three referrals turns the first applicant away in public.
+
+```
+/launch start days:7 service:"Minecraft Plugin" slots:0 everyone:True
+/launch status          # time and slots remaining
+/launch end             # close early and rewrite the announcement
+```
+
+The window closes itself when it expires — the scheduler edits the original
+announcement to say the offer has ended, and the free-service panel reverts to
+the referral instructions on its next refresh.
+
+---
+
 ## Architecture
 
 ```
@@ -363,8 +419,11 @@ src/
 ├── components/              buttons · selectMenus · modals · forms
 ├── services/                the business logic
 ├── security/                filters · autoMod · linkProtection · antiRaid · antiNuke
-└── utils/                   embeds · components · formatters · validators ·
+└── utils/                   embeds · components · assets · formatters · validators ·
                              permissions · logger · errors · rateLimiter · discord
+
+brand/                       logo, banner and per-panel header artwork
+scripts/                     deploy · doctor · build-panel-art · render-brand
 ```
 
 Principles the codebase actually follows:
@@ -416,13 +475,13 @@ on the same token double-handle every event.
 
 ```ini
 [Unit]
-Description=Player Accelerator
+Description=SamotWorks
 After=network-online.target mongod.service
 
 [Service]
 Type=simple
 User=studio
-WorkingDirectory=/opt/player-accelerator
+WorkingDirectory=/opt/samotworks
 ExecStart=/usr/bin/node src/index.js
 Restart=always
 RestartSec=10

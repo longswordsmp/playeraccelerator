@@ -19,6 +19,7 @@ const reviewService = require('./reviewService');
 const embeds = require('../utils/embeds');
 const components = require('../utils/components');
 const customId = require('../utils/customId');
+const assets = require('../utils/assets');
 const { Review, Portfolio } = require('../database/models');
 const { EMOJIS, COLORS, stars } = require('../config/branding');
 const { safeSend, resolveTextChannel, attempt } = require('../utils/discord');
@@ -107,14 +108,32 @@ async function freeCommissionPanel(guild, config) {
   const required = config.referrals?.requiredForFreeCommission ?? 3;
   const graceHours = config.referrals?.revokeIfLeaveWithinHours ?? 0;
 
+  // While the launch promotion runs the referral requirement is waived, and
+  // this panel has to say so — it is the page people read before applying, and
+  // leaving the old instructions up would send them to earn invites they do not
+  // currently need.
+  const launchService = require('./launchService');
+  const launchOpen = launchService.isOpen(config);
+  const endsAt = config.launch?.endsAt ? new Date(config.launch.endsAt) : null;
+
   return {
     embeds: [embeds.panel({
       config,
+      color: launchOpen ? COLORS.success : undefined,
       title: `${EMOJIS.star} ${doc.title}`,
       description: doc.intro,
       fields: [
+        ...(launchOpen
+          ? [{
+            name: `${EMOJIS.bolt} Launch week — the requirement is waived`,
+            value:
+              'For the moment you do not need any referrals at all. Open a **Free Portfolio Commission** '
+              + 'ticket and ask.'
+              + (endsAt ? `\n\nBack to the usual requirement <t:${Math.floor(endsAt.getTime() / 1000)}:R>.` : ''),
+          }]
+          : []),
         {
-          name: 'How to unlock an application',
+          name: launchOpen ? 'How it works the rest of the time' : 'How to unlock an application',
           value:
             `Invite **${required} people** who join and stay.\n\n` +
             `${EMOJIS.arrow} Run \`/invites\` to get your personal link and see your progress\n` +
@@ -426,14 +445,17 @@ async function publish(guild, config, key, channelId = null) {
   const channel = targetId ? await resolveTextChannel(guild, targetId) : null;
   if (!channel) return null;
 
-  const payload = await definition.build(guild, config);
+  const payload = assets.attachPanelArt(await definition.build(guild, config), key, config, channel);
   const stored = config.panels?.[key];
 
   // Edit in place when the stored message still exists.
   if (stored?.messageId && stored.channelId === channel.id) {
     const existing = await attempt(() => channel.messages.fetch(stored.messageId), { label: `fetch ${key} panel` });
     if (existing?.editable) {
-      const edited = await attempt(() => existing.edit(payload), { label: `edit ${key} panel` });
+      // `attachments: []` drops the previous upload. Without it Discord keeps
+      // the old file alongside the new one and the embed's `attachment://` URL
+      // resolves against a stale duplicate, so the header stops updating.
+      const edited = await attempt(() => existing.edit({ ...payload, attachments: [] }), { label: `edit ${key} panel` });
       if (edited) return edited;
     }
   }
@@ -468,7 +490,8 @@ async function refresh(guild, config, key) {
  * Called by the scheduler on a slow cadence.
  */
 async function refreshDynamic(guild, config) {
-  const dynamic = ['status', 'hours', 'statistics', 'queue', 'reviews', 'performance'];
+  // `freeCommission` is here because the launch promotion changes what it says.
+  const dynamic = ['status', 'hours', 'statistics', 'queue', 'reviews', 'performance', 'freeCommission'];
   let refreshed = 0;
   for (const key of dynamic) {
     // eslint-disable-next-line no-await-in-loop -- sequential to respect rate limits
@@ -476,6 +499,125 @@ async function refreshDynamic(guild, config) {
     if (message) refreshed += 1;
   }
   return refreshed;
+}
+
+/**
+ * Delete the bot's own messages in a channel.
+ *
+ * Two paths, because Discord only allows bulk deletion of messages under
+ * fourteen days old; anything older has to go one at a time. Messages authored
+ * by anyone else are never touched — this clears the bot's own output, not the
+ * channel.
+ *
+ * @param {import('discord.js').TextChannel} channel
+ * @param {string} botId
+ * @param {number} [limit] how many recent messages to consider
+ * @returns {Promise<number>} messages deleted
+ */
+async function purgeOwnMessages(channel, botId, limit = 100) {
+  const fetched = await attempt(() => channel.messages.fetch({ limit }), { label: `fetch messages in #${channel.name}` });
+  if (!fetched) return 0;
+
+  const mine = [...fetched.values()].filter((message) => message.author?.id === botId && message.deletable);
+  if (!mine.length) return 0;
+
+  const cutoff = Date.now() - 13 * 86_400_000;
+  const recent = mine.filter((message) => message.createdTimestamp > cutoff);
+  // A single message goes down the one-at-a-time path too. discord.js does route
+  // a one-element bulkDelete to the single-delete endpoint, but it then resolves
+  // with an empty collection unless the message happens to still be cached — so
+  // counting its result would under-report a delete that actually happened.
+  const single = mine.filter((message) => message.createdTimestamp <= cutoff)
+    .concat(recent.length === 1 ? recent : []);
+
+  let deleted = 0;
+
+  if (recent.length > 1) {
+    const removed = await attempt(() => channel.bulkDelete(recent, true), { label: `bulk delete in #${channel.name}` });
+    // The endpoint is all-or-nothing, so a non-null result means every id went.
+    if (removed) deleted += recent.length;
+  }
+
+  for (const message of single) {
+    // eslint-disable-next-line no-await-in-loop -- sequential to respect rate limits
+    const gone = await attempt(() => message.delete(), { label: 'delete old panel message' });
+    if (gone) deleted += 1;
+  }
+
+  return deleted;
+}
+
+/**
+ * Wipe the bot's previous posts from every panel channel and publish the whole
+ * set again from scratch.
+ *
+ * This is the answer to "the server is full of the old bot's messages". A plain
+ * refresh edits in place and leaves orphans behind — anything published before
+ * a rebrand, or a panel that was posted twice, or a message whose id was lost
+ * when the configuration was reset. Republishing forgets the stored ids first,
+ * so nothing is edited and everything is posted fresh.
+ *
+ * @param {import('discord.js').Guild} guild
+ * @param {object} config
+ * @param {{ onProgress?: (line: string) => void }} [options]
+ * @returns {Promise<{ published: number, deleted: number, skipped: string[] }>}
+ */
+async function republishAll(guild, config, { onProgress = () => {} } = {}) {
+  const botId = guild.client.user.id;
+  const result = { published: 0, deleted: 0, skipped: [] };
+
+  // Group panels by destination so a channel holding two panels is cleared once
+  // rather than once per panel — otherwise the second pass deletes the first
+  // panel we just posted.
+  const byChannel = new Map();
+  for (const [key, definition] of Object.entries(PANELS)) {
+    const channelId = config.channels?.[definition.channel];
+    if (!channelId) {
+      result.skipped.push(key);
+      continue;
+    }
+    if (!byChannel.has(channelId)) byChannel.set(channelId, []);
+    byChannel.get(channelId).push(key);
+  }
+
+  for (const [channelId, keys] of byChannel) {
+    // eslint-disable-next-line no-await-in-loop -- sequential to respect rate limits
+    const channel = await resolveTextChannel(guild, channelId);
+    if (!channel) {
+      result.skipped.push(...keys);
+      continue;
+    }
+
+    // eslint-disable-next-line no-await-in-loop
+    result.deleted += await purgeOwnMessages(channel, botId);
+
+    // Forget the stored message ids so `publish` cannot try to edit a message
+    // we have just deleted, and posts a new one instead.
+    // eslint-disable-next-line no-await-in-loop
+    await configService.update(guild, (cfg) => {
+      for (const key of keys) cfg.setPath(`panels.${key}`, {});
+    });
+
+    for (const key of keys) {
+      // eslint-disable-next-line no-await-in-loop
+      const fresh = await configService.get(guild, { fresh: true });
+      // eslint-disable-next-line no-await-in-loop
+      const message = await publish(guild, fresh, key).catch((err) => {
+        log.warn(`Republish of ${key} failed`, { message: err.message });
+        return null;
+      });
+
+      if (message) {
+        result.published += 1;
+        onProgress(`Republished \`${key}\` in <#${channel.id}>`);
+      } else {
+        result.skipped.push(key);
+      }
+    }
+  }
+
+  log.info('Panels republished', { guildId: guild.id, ...result, skipped: result.skipped.length });
+  return result;
 }
 
 /**
@@ -503,4 +645,4 @@ async function publishAll(guild, config, targets, onWarning = () => {}) {
   return published;
 }
 
-module.exports = { PANELS, publish, refresh, refreshDynamic, publishAll };
+module.exports = { PANELS, publish, refresh, refreshDynamic, publishAll, republishAll, purgeOwnMessages };

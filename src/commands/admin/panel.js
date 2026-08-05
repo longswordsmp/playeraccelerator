@@ -14,6 +14,8 @@ const { safeReply, safeDefer } = require('../../utils/discord');
 
 const PANEL_CHOICES = [
   { name: 'Welcome', value: 'welcome' },
+  { name: 'Verification', value: 'verify' },
+  { name: 'Free Service', value: 'freeCommission' },
   { name: 'Rules', value: 'rules' },
   { name: 'FAQ', value: 'faq' },
   { name: 'Terms of Service', value: 'tos' },
@@ -32,7 +34,7 @@ module.exports = {
   access: 'admin',
   cooldown: 10,
   requiresSetup: true,
-  botPermissions: ['SendMessages', 'EmbedLinks', 'ManageMessages'],
+  botPermissions: ['SendMessages', 'EmbedLinks', 'ManageMessages', 'AttachFiles'],
 
   data: new SlashCommandBuilder()
     .setName('panel')
@@ -59,6 +61,13 @@ module.exports = {
         .setDescription('Which panel. Omit to refresh every live panel.')
         .addChoices(...PANEL_CHOICES)))
     .addSubcommand((sub) => sub
+      .setName('republish')
+      .setDescription('Delete my old posts in every panel channel and publish the whole set again.')
+      .addBooleanOption((option) => option
+        .setName('confirm')
+        .setDescription('Required. This deletes my previous messages in those channels.')
+        .setRequired(true)))
+    .addSubcommand((sub) => sub
       .setName('list')
       .setDescription('Show which panels are published and where.')),
 
@@ -84,6 +93,41 @@ module.exports = {
           title: `${EMOJIS.logs} Panels`,
           description: rows.join('\n'),
           footer: 'Publish a missing panel with /panel publish',
+        })],
+      }, { ephemeral: true });
+    }
+
+    if (sub === 'republish') {
+      if (!interaction.options.getBoolean('confirm')) {
+        return safeReply(interaction, {
+          embeds: [embeds.warning({
+            config,
+            title: 'Nothing done',
+            description:
+              'Republishing deletes my own previous messages in every panel channel and posts the '
+              + 'whole set again. Run it with `confirm: True` when you are ready.',
+          })],
+        }, { ephemeral: true });
+      }
+
+      const fresh = await configService.get(interaction.guild, { fresh: true });
+      const result = await panelService.republishAll(interaction.guild, fresh);
+
+      return safeReply(interaction, {
+        embeds: [embeds.success({
+          config: fresh,
+          title: 'Panels Republished',
+          description:
+            `Removed **${result.deleted}** of my old message${result.deleted === 1 ? '' : 's'} and posted `
+            + `**${result.published}** panel${result.published === 1 ? '' : 's'} fresh, with the current branding.`,
+          fields: result.skipped.length
+            ? [{
+              name: 'Skipped',
+              value:
+                `${result.skipped.map((key) => `\`${key}\``).join(', ')}\n`
+                + '_No channel is configured for these, or I cannot post there._',
+            }]
+            : [],
         })],
       }, { ephemeral: true });
     }

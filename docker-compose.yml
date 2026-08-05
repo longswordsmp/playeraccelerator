@@ -13,7 +13,7 @@ services:
     image: mongo:7
     restart: unless-stopped
     environment:
-      MONGO_INITDB_DATABASE: player-accelerator
+      MONGO_INITDB_DATABASE: samotworks
     volumes:
       - mongo-data:/data/db
       - mongo-config:/data/configdb
@@ -38,7 +38,7 @@ services:
       - .env
     environment:
       # Overrides .env so the container always targets the compose service.
-      DATABASE_URL: mongodb://mongo:27017/player-accelerator
+      DATABASE_URL: mongodb://mongo:27017/samotworks
       NODE_ENV: production
     volumes:
       - transcripts:/app/transcripts

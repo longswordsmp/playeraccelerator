@@ -16,6 +16,7 @@ const moderationService = require('./moderationService');
 const reportService = require('./reportService');
 const backupService = require('./backupService');
 const orderService = require('./orderService');
+const launchService = require('./launchService');
 const antiRaid = require('../security/antiRaid');
 const { GuildStats } = require('../database/models');
 const { logger } = require('../utils/logger');
@@ -116,6 +117,15 @@ const JOBS = [
     },
     once: 'day',
     run: async (guild) => reportService.postWeekly(guild),
+  },
+  {
+    name: 'close-expired-launch',
+    every: 10,
+    perGuild: true,
+    run: async (guild, config) => {
+      const closed = await launchService.sweep(guild, config);
+      if (closed) log.info('Launch promotion window expired', { guildId: guild.id });
+    },
   },
   {
     name: 'scheduled-backup',

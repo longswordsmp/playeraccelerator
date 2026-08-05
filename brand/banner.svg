@@ -44,7 +44,7 @@
 
   <!-- Wordmark -->
   <text x="330" y="196" font-family="Segoe UI, Inter, system-ui, -apple-system, sans-serif"
-        font-size="76" font-weight="700" fill="#f8fafc" letter-spacing="-1.5">Samotworks</text>
+        font-size="76" font-weight="700" fill="#f8fafc" letter-spacing="-1.5">SamotWorks</text>
   <text x="334" y="248" font-family="Segoe UI, Inter, system-ui, -apple-system, sans-serif"
         font-size="27" font-weight="500" fill="#8b90a5" letter-spacing="4.5">SOFTWARE DEVELOPMENT STUDIO</text>
 

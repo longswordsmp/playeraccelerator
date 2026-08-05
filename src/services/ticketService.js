@@ -187,8 +187,14 @@ async function create({ guild, user, type, config = null, subject = '' }) {
     throw new errors.ConflictError('That service is not currently accepting new requests.');
   }
 
-  // Free commissions are earned through referrals, not simply requested.
-  if (type === 'free-commission' && cfg.referrals?.enabled) {
+  // Free commissions are earned through referrals, not simply requested —
+  // except while the launch promotion is running, which deliberately opens the
+  // door to everyone. The announcement and this check read the same window, so
+  // the offer can never promise something the gate then refuses.
+  const launchService = require('./launchService');
+  const launchWaiver = launchService.waivesReferralGate(cfg, type);
+
+  if (type === 'free-commission' && cfg.referrals?.enabled && !launchWaiver) {
     const inviteService = require('./inviteService');
     const { allowed, reason } = await inviteService.canClaimFreeCommission(guild.id, user.id, cfg);
     if (!allowed) throw new errors.ConflictError(reason);
@@ -287,6 +293,10 @@ async function create({ guild, user, type, config = null, subject = '' }) {
       fields: { Service: typeDefinition.label, Priority: PRIORITIES[priority].label },
     }, cfg),
   ]);
+
+  // Burn a launch slot only now that the ticket genuinely exists — counting it
+  // any earlier would let a failed channel creation eat one of the free places.
+  if (launchWaiver) await launchService.claimSlot(guild).catch(() => null);
 
   statisticsService.invalidate(guild.id);
   log.info(`Ticket #${padId(number)} created`, { guildId: guild.id, userId: user.id, type });

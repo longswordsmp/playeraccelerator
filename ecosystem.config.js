@@ -6,7 +6,7 @@
  *   npm install -g pm2
  *   pm2 start ecosystem.config.js
  *   pm2 save && pm2 startup     # survive a reboot
- *   pm2 logs player-accelerator
+ *   pm2 logs samotworks
  *
  * A single instance is correct: Discord bots are stateful gateway clients, and
  * running two of the same token causes duplicate event handling. Scale by
@@ -16,7 +16,7 @@
 module.exports = {
   apps: [
     {
-      name: 'player-accelerator',
+      name: 'samotworks',
       script: 'src/index.js',
       instances: 1,
       exec_mode: 'fork',
