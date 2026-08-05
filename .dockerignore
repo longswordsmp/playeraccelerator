@@ -1,0 +1,17 @@
+node_modules
+npm-debug.log*
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+logs
+transcripts
+backups
+tests
+eslint.config.js
+ecosystem.config.js
+docker-compose.yml
+Dockerfile
+README.md
+*.md

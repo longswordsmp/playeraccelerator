@@ -1,0 +1,39 @@
+{
+  "name": "player-accelerator",
+  "version": "1.0.0",
+  "description": "Enterprise-grade Discord management platform for professional software development studios: tickets, orders, reviews, portfolio, promotion partnerships, business analytics, moderation and security.",
+  "main": "src/index.js",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "deploy": "node scripts/deployCommands.js",
+    "deploy:global": "node scripts/deployCommands.js --global",
+    "undeploy": "node scripts/deployCommands.js --clear",
+    "doctor": "node scripts/doctor.js",
+    "test": "node --test tests/*.test.js",
+    "lint": "eslint src/ scripts/ tests/",
+    "lint:fix": "eslint src/ scripts/ tests/ --fix"
+  },
+  "keywords": [
+    "discord",
+    "discord.js",
+    "tickets",
+    "orders",
+    "moderation",
+    "business",
+    "mongodb"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "discord.js": "^14.16.3",
+    "dotenv": "^16.4.5",
+    "mongoose": "^8.7.0"
+  },
+  "devDependencies": {
+    "eslint": "^9.39.5"
+  }
+}
