@@ -11,6 +11,7 @@ const moderationService = require('../../services/moderationService');
 const antiRaid = require('../../security/antiRaid');
 const antiNuke = require('../../security/antiNuke');
 const autoMod = require('../../security/autoMod');
+const presets = require('../../security/presets');
 const embeds = require('../../utils/embeds');
 const components = require('../../utils/components');
 const customId = require('../../utils/customId');
@@ -46,6 +47,13 @@ const security = build({
     (data) => data.addSubcommand((sub) => sub
       .setName('modules')
       .setDescription('List every AutoMod module and its configuration.')),
+    (data) => data.addSubcommand((sub) => sub
+      .setName('preset')
+      .setDescription('Set how much AutoMod actually moderates, in one command.')
+      .addStringOption((option) => option
+        .setName('level')
+        .setDescription('How strict. Omit to see what each level does.')
+        .addChoices(...Object.entries(presets.PRESETS).map(([value, meta]) => ({ name: meta.label, value }))))),
     (data) => data.addSubcommand((sub) => sub
       .setName('toggle')
       .setDescription('Turn a protection system on or off.')
@@ -145,6 +153,46 @@ const security = build({
               },
             ],
             footer: 'Configure with /config automod, /config antiraid, /config antinuke',
+          })],
+        }, { ephemeral: true });
+      }
+
+      case 'preset': {
+        const level = interaction.options.getString('level');
+        const current = config.automod?.modules ?? {};
+
+        if (!level) {
+          const active = presets.identify(current);
+          return safeReply(interaction, {
+            embeds: [embeds.info({
+              config,
+              title: `${EMOJIS.security} AutoMod Presets`,
+              description: active
+                ? `This server is currently on **${presets.PRESETS[active].label}**.`
+                : 'This server does not match any preset — the modules have been tuned individually.',
+              fields: Object.entries(presets.PRESETS).map(([key, meta]) => ({
+                name: `${meta.label}${active === key ? '  ← current' : ''}`,
+                value: `${meta.summary}\n_${meta.detail}_\n\`/security preset level:${meta.label}\``,
+              })),
+              footer: 'Scam, phishing, malware and token-grabber protection stays on at every level.',
+            })],
+          }, { ephemeral: true });
+        }
+
+        const { modules, enabled, disabled } = presets.apply(level, current);
+        await configService.setPaths(guild, { 'automod.modules': modules });
+        const fresh = await configService.get(guild, { fresh: true });
+
+        return safeReply(interaction, {
+          embeds: [embeds.success({
+            config: fresh,
+            title: `AutoMod set to ${presets.PRESETS[level].label}`,
+            description: presets.PRESETS[level].summary,
+            fields: [
+              { name: `Active (${enabled.length})`, value: truncate(enabled.map((k) => `\`${k}\``).join(' '), 1024) || '_none_' },
+              { name: `Off (${disabled.length})`, value: truncate(disabled.map((k) => `\`${k}\``).join(' '), 1024) || '_none_' },
+            ],
+            footer: 'Tickets relax further: only scam and malware rules run in a customer channel.',
           })],
         }, { ephemeral: true });
       }

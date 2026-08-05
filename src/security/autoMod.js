@@ -334,11 +334,44 @@ const CONTENT_RULES = new Set([
  * @param {object} config
  * @returns {Promise<{ action: string, module: string, reason: string }|null>}
  */
+/**
+ * The only modules that still run inside a ticket.
+ *
+ * Every one of these protects the customer from a third party rather than
+ * policing how they write. A phishing link in a private channel is still
+ * phishing; a Discord invite in one is a customer showing you their server.
+ */
+const TICKET_SAFE_MODULES = new Set([
+  'scamLinks', 'phishingLinks', 'malwareLinks', 'tokenGrabbers', 'fakeNitro',
+]);
+
+/**
+ * Is this channel a customer's private ticket?
+ *
+ * Tickets are a conversation with one paying customer, not a public room, and
+ * the things a filter is protecting a public room *from* are usually exactly
+ * what a customer needs to send: the invite to the server they want a plugin
+ * for, a wall of caps because something is broken, a config file pasted in
+ * full. Moderating that is both pointless — nobody else can see it — and
+ * actively harmful, because the message that gets deleted is the brief.
+ *
+ * Parent-based rather than a database lookup so it stays synchronous on the
+ * message hot path.
+ */
+function isTicketChannel(channel, config) {
+  const parents = [config.categories?.tickets, config.categories?.archive].filter(Boolean);
+  return Boolean(channel?.parentId && parents.includes(channel.parentId));
+}
+
 async function inspect(message, config) {
   if (!config.automod?.enabled || !config.moderation?.enabled) return null;
   if (!message.guild || message.author.bot || !message.member) return null;
   if (moderationService.isChannelExempt(message.channelId, config)) return null;
   if (moderationService.isExempt(message.member, config)) return null;
+
+  // Inside a ticket, only the rules that protect the *customer* still apply:
+  // scam, phishing, malware and token grabbers. Everything else stands down.
+  const inTicket = config.moderation?.relaxInTickets !== false && isTicketChannel(message.channel, config);
 
   const content = message.content ?? '';
   const key = `${message.guild.id}:${message.author.id}`;
@@ -347,13 +380,14 @@ async function inspect(message, config) {
   // Link protection runs first: a malicious link is the highest-severity thing
   // an ordinary message can contain.
   const linkFinding = await linkProtection.inspect(message, config);
-  if (linkFinding) {
+  if (linkFinding && !(inTicket && !TICKET_SAFE_MODULES.has(linkFinding.module))) {
     return enforce(message, config, linkFinding.module, modules[linkFinding.module] ?? {}, linkFinding);
   }
 
   for (const rule of RULES) {
     const settings = modules[rule.key];
     if (!settings?.enabled) continue;
+    if (inTicket && !TICKET_SAFE_MODULES.has(rule.key)) continue;
     // Content-dependent rules need the MessageContent intent to be useful.
     if (CONTENT_RULES.has(rule.key) && !content) continue;
 
@@ -521,4 +555,4 @@ const MODULE_LIST = RULES.map((rule) => ({ key: rule.key, label: rule.label }))
     { key: 'nsfwImages', label: 'Image Moderation' },
   ]);
 
-module.exports = { inspect, enforce, rememberMentions, checkGhostPing, RULES, MODULE_LIST, windows };
+module.exports = { inspect, enforce, rememberMentions, checkGhostPing, isTicketChannel, RULES, MODULE_LIST, TICKET_SAFE_MODULES, windows };

@@ -313,6 +313,15 @@ const DEFAULT_CONFIG = {
   // ── Moderation & security ──────────────────────────────────────────────────
   moderation: {
     enabled: true,
+    /**
+     * Stand AutoMod down inside ticket channels, except for the rules that
+     * protect the customer from a third party (scam, phishing, malware, token
+     * grabbers). A ticket is a private conversation with one paying customer;
+     * the invite link, the wall of caps and the pasted config file are all
+     * things they legitimately need to send, and deleting them deletes the
+     * brief.
+     */
+    relaxInTickets: true,
     /** Role ids exempt from every automod module. */
     ignoredRoles: [],
     /** Channel ids exempt from every automod module. */

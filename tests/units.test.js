@@ -803,3 +803,82 @@ test('the welcome sweep refuses to run when it cannot identify the panel', async
   });
   assert.equal(fetched, false);
 });
+
+// ── AutoMod presets and ticket relaxation ────────────────────────────────────
+
+test('the minimal preset moderates slurs and invites and nothing else', () => {
+  const presets = require('../src/security/presets');
+  const { DEFAULT_CONFIG } = require('../src/config/defaults');
+
+  const { enabled, disabled } = presets.apply('minimal', DEFAULT_CONFIG.automod.modules);
+
+  assert.deepEqual(enabled.sort(), [
+    'fakeNitro', 'inviteLinks', 'malwareLinks', 'phishingLinks',
+    'scamLinks', 'slurs', 'tokenGrabbers',
+  ]);
+
+  // The rules that fire on ordinary conversation must all be off — these are
+  // what made the server feel like it deleted everything.
+  for (const noisy of [
+    'capsAbuse', 'symbolAbuse', 'newlineAbuse', 'emojiSpam', 'repeatedMessages',
+    'profanity', 'advertising', 'selfPromotion', 'gifSpam',
+  ]) {
+    assert.ok(disabled.includes(noisy), `${noisy} should be off in minimal`);
+  }
+});
+
+test('a preset changes only the enabled flag, never a tuned threshold', () => {
+  const presets = require('../src/security/presets');
+
+  const current = {
+    slurs: { enabled: false, action: 'ban', threshold: 1, duration: 10080 },
+    capsAbuse: { enabled: true, action: 'delete', threshold: 90 },
+  };
+  const { modules } = presets.apply('minimal', current);
+
+  assert.equal(modules.slurs.enabled, true);
+  assert.equal(modules.slurs.action, 'ban', 'a tuned action must survive');
+  assert.equal(modules.slurs.duration, 10080);
+  assert.equal(modules.capsAbuse.enabled, false);
+  assert.equal(modules.capsAbuse.threshold, 90, 'a disabled module keeps its settings');
+});
+
+test('scam protection cannot be switched off by any preset', () => {
+  const presets = require('../src/security/presets');
+  const { DEFAULT_CONFIG } = require('../src/config/defaults');
+
+  for (const level of Object.keys(presets.PRESETS)) {
+    const { enabled } = presets.apply(level, DEFAULT_CONFIG.automod.modules);
+    for (const critical of presets.ALWAYS_ON) {
+      assert.ok(enabled.includes(critical), `${critical} must stay on in ${level}`);
+    }
+  }
+});
+
+test('the shipped defaults are recognisable as the strict preset', () => {
+  const presets = require('../src/security/presets');
+  const { DEFAULT_CONFIG } = require('../src/config/defaults');
+
+  // If this fails, `strict` has drifted from defaults.js and its description
+  // ("everything the shipped defaults enable") has quietly become a lie.
+  assert.equal(presets.identify(DEFAULT_CONFIG.automod.modules), 'strict');
+  assert.equal(presets.identify({}), null);
+});
+
+test('tickets are recognised so AutoMod can stand down inside them', () => {
+  const autoMod = require('../src/security/autoMod');
+  const config = { categories: { tickets: 'cat-tickets', archive: 'cat-archive' } };
+
+  assert.equal(autoMod.isTicketChannel({ parentId: 'cat-tickets' }, config), true);
+  assert.equal(autoMod.isTicketChannel({ parentId: 'cat-archive' }, config), true);
+  assert.equal(autoMod.isTicketChannel({ parentId: 'cat-general' }, config), false);
+  assert.equal(autoMod.isTicketChannel({ parentId: null }, config), false);
+  assert.equal(autoMod.isTicketChannel({ parentId: 'cat-tickets' }, {}), false, 'no categories configured');
+
+  // A Discord invite is the single most likely thing a Minecraft customer
+  // sends, so it must not be in the set that still runs inside a ticket.
+  assert.equal(autoMod.TICKET_SAFE_MODULES.has('inviteLinks'), false);
+  assert.equal(autoMod.TICKET_SAFE_MODULES.has('capsAbuse'), false);
+  assert.equal(autoMod.TICKET_SAFE_MODULES.has('phishingLinks'), true);
+  assert.equal(autoMod.TICKET_SAFE_MODULES.has('tokenGrabbers'), true);
+});
