@@ -380,13 +380,24 @@ test('mongoose global sanitizeFilter stays off, and the reason is provable', () 
 
 test('a missing component argument cannot collapse a lookup into match-any', () => {
   const validators = require('../src/utils/validators');
+  const cast = require('mongoose/lib/cast');
+  const { BSON } = require('mongodb');
 
-  // Mongoose strips undefined out of a filter, so an unguarded
-  // `findOne({ _id: undefined, guildId })` silently becomes `findOne({ guildId })`
-  // and returns an arbitrary document. Prove both halves of that claim.
-  const collapsed = models.Order.findOne({ _id: undefined, guildId: GUILD }).getFilter();
-  assert.deepEqual(collapsed, { guildId: GUILD }, 'undefined really is stripped');
+  /*
+   * The hazard: an unguarded `findOne({ _id: undefined, guildId })` keeps the
+   * key in the JavaScript object, but `undefined` carries no BSON
+   * representation — so the filter that reaches the server is `{ guildId }`,
+   * which matches an arbitrary document instead of failing.
+   */
+  const casted = cast(models.Order.schema, { _id: undefined, guildId: GUILD }, {});
+  assert.equal(casted._id, undefined, 'the cast filter still carries an undefined _id');
+  assert.deepEqual(
+    BSON.deserialize(BSON.serialize(casted)),
+    { guildId: GUILD },
+    'and the _id constraint vanishes on the wire, leaving a guild-wide match',
+  );
 
+  // The guard is what stops that from ever being reached.
   assert.throws(() => validators.objectId(undefined, 'order'), /out of date/);
   assert.throws(() => validators.objectId('', 'order'), /out of date/);
   assert.throws(() => validators.objectId('not-an-object-id', 'order'), /out of date/);
