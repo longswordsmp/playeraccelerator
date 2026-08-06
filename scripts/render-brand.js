@@ -107,7 +107,13 @@ async function main() {
   process.stdout.write(`\n  ${jobs.length} images rendered.\n`);
 }
 
-main().catch((err) => {
-  process.stderr.write(`${err.stack}\n`);
-  process.exitCode = 1;
-});
+module.exports = { resolveChromium };
+
+// Only render when invoked directly, so `build-animated-brand.js` can import
+// the browser resolver without kicking off a full still render.
+if (require.main === module) {
+  main().catch((err) => {
+    process.stderr.write(`${err.stack}\n`);
+    process.exitCode = 1;
+  });
+}

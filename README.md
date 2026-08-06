@@ -368,14 +368,33 @@ editor, so it can be regenerated at any size and kept consistent:
 | `brand/bot-avatar.png` | The same mark at 1024², for the application avatar |
 | `brand/banner.svg` / `.png` | Wordmark banner, 1200×400 |
 | `brand/panels/*.png` | One 1200×300 header per public panel |
+| `brand/logo-animated.gif` | Animated mark, 512², for the server icon (boost level 1) |
+| `brand/banner-animated.gif` | Animated banner, 1200×400, for the server banner (level 2) |
 
 Regenerate after changing wording, colours or glyphs:
 
 ```bash
-npm install --no-save playwright-core
-node scripts/build-panel-art.js     # writes brand/panels/*.svg from the template
-node scripts/render-brand.js        # rasterises every SVG to PNG
+npm install --no-save playwright-core gifenc pngjs
+node scripts/build-panel-art.js       # writes brand/panels/*.svg from the template
+node scripts/render-brand.js          # rasterises every SVG to PNG
+node scripts/build-animated-brand.js  # renders the animated GIFs
 ```
+
+Install those three in one command: `npm install --no-save` prunes anything
+absent from `package.json` on the next install, so installing them separately
+removes the previous one.
+
+The animated artwork is a deliberate design: the mark is never absent. A
+"draws itself in" loop looks good once and poor as a server icon, because for
+part of every cycle the icon is blank. What moves instead is a highlight
+sweeping through the mark, a typed status line and the code rain behind. Frames
+are sampled by calling `renderFrame(t)` rather than screenshotting a CSS
+animation, so each frame is exact and the loop closes — `t=1` is defined to
+equal `t=0`.
+
+They are not attached to panels: at ~2.6 MB, re-uploading one per panel refresh
+would be wasteful for an effect nobody is watching. Upload them by hand as the
+server icon, server banner or bot avatar.
 
 Panel headers are uploaded as message attachments rather than hot-linked.
 Discord's CDN links for attachments now carry an expiry signature, so a URL
@@ -532,7 +551,8 @@ src/
                              permissions · logger · errors · rateLimiter · discord
 
 brand/                       logo, banner and per-panel header artwork
-scripts/                     deploy · doctor · configure · build-panel-art · render-brand
+scripts/                     deploy · doctor · configure · build-panel-art ·
+                             render-brand · build-animated-brand
 ```
 
 Principles the codebase actually follows:
